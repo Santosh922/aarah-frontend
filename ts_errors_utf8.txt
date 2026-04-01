@@ -1,0 +1,4 @@
+﻿src/app/(admin)/admin/banners/page.tsx(336,26): error TS2304: Cannot find name 'Play'.
+src/app/(admin)/admin/banners/page.tsx(710,58): error TS2304: Cannot find name 'Play'.
+src/app/api/admin/banners/route.ts(60,9): error TS2353: Object literal may only specify known properties, and 'videoUrl' does not exist in type '(Without<BannerCreateInput, BannerUncheckedCreateInput> & BannerUncheckedCreateInput) | (Without<...> & BannerCreateInput)'.
+src/app/api/storefront/settings/route.ts(53,9): error TS2353: Object literal may only specify known properties, and 'selectedStoryVideoId' does not exist in type '(Without<StoreSettingsUpdateInput, StoreSettingsUncheckedUpdateInput> & StoreSettingsUncheckedUpdateInput) | (Without<...> & StoreSettingsUpdateInput)'.

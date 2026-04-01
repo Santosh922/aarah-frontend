@@ -1,0 +1,59 @@
+import { API_URL } from '@/lib/api';
+import type { Metadata } from 'next';
+import prisma from '@/lib/prisma';
+import ProductListingClient from '@/components/sections/ProductListingClient';
+import type { Product } from '@/components/ui/ProductCard';
+import { Sparkles } from 'lucide-react';
+
+export const revalidate = 300;
+
+export const metadata: Metadata = {
+  title: 'New Arrivals | AARAH',
+  description: 'Discover the latest additions to our maternity collection — blending modern aesthetics with unparalleled comfort.',
+};
+
+interface ListingBanner {
+  imageUrl: string;
+  title?: string;
+  subtitle?: string;
+  buttonText?: string;
+  buttonLink?: string;
+}
+
+async function getPageData() {
+  const [productsData, banner] = await Promise.all([
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/storefront/products?newArrival=true&page=1&pageSize=16&sortBy=newest`, { next: { revalidate: 300 } });
+        return res.ok ? res.json() : { products: [] as Product[], total: 0 };
+      } catch { return { products: [] as Product[], total: 0 }; }
+    })(),
+    prisma.banner.findFirst({
+      where: { isActive: true, position: 'new_arrivals' },
+      select: { imageUrl: true, title: true, subtitle: true, buttonText: true, buttonLink: true },
+    }).catch(() => null),
+  ]);
+
+  return {
+    products: productsData.products as Product[],
+    total: productsData.total as number,
+    banner: banner as ListingBanner | null,
+  };
+}
+
+export default async function NewArrivalsPage() {
+  const { products, total, banner } = await getPageData();
+
+  return (
+    <ProductListingClient
+      filterKey="newArrival"
+      filterValue="true"
+      defaultSort="newest"
+      initialProducts={products}
+      initialTotal={total}
+      title="New Arrivals"
+      bannerIcon={<Sparkles className="w-3.5 h-3.5" />}
+      banner={banner ?? undefined}
+    />
+  );
+}
