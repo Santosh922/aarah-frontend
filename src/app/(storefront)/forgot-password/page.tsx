@@ -15,7 +15,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError('');
 
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError('Please enter a valid email address.');
       return;
     }

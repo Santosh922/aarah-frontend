@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
-    const { code, cartTotal } = await request.json();
+    const { code, cartTotal, cartProductIds } = await request.json();
 
     if (!code) {
       return NextResponse.json({ valid: false, error: 'Please enter a coupon code' });
@@ -16,8 +16,8 @@ export async function POST(request: Request) {
       const token = cookieStore.get('aarah_customer_token')?.value;
       if (token) {
         const jwt = await import('jsonwebtoken');
-        const decoded = jwt.default.verify(token, process.env.JWT_SECRET!) as { userId: string };
-        userId = decoded.userId;
+        const decoded = jwt.default.verify(token, process.env.JWT_SECRET!) as { id: string, userId?: string };
+        userId = decoded.id || decoded.userId || null;
       }
     } catch {}
 
@@ -63,6 +63,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ valid: false, error: `Minimum order value of ₹${discount.minRequirementValue} required.` });
     }
 
+    if (discount.appliesTo === 'specific_products') {
+      const pIds = cartProductIds || [];
+      const hasMatch = pIds.some((id: string) => discount.selectedProductIds.includes(id));
+      if (!hasMatch) {
+         return NextResponse.json({ valid: false, error: 'This coupon is not applicable to the products in your cart.' });
+      }
+    }
+
     const rawType = discount.type.toLowerCase();
     const normalizedType = 
       rawType === 'percentage' ? 'PERCENTAGE' :
@@ -88,7 +96,10 @@ export async function POST(request: Request) {
       value: discount.value,
       minOrderValue: discount.minRequirementValue,
       desc,
-      terms: discount.minRequirementValue > 0 ? `Valid on orders above ₹${discount.minRequirementValue}` : 'No minimum order required'
+      terms: discount.minRequirementValue > 0 ? `Valid on orders above ₹${discount.minRequirementValue}` : 'No minimum order required',
+      appliesTo: discount.appliesTo,
+      selectedProductIds: discount.selectedProductIds,
+      selectedCategoryIds: discount.selectedCategoryIds
     });
 
   } catch (error) {

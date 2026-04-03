@@ -8,8 +8,8 @@ type AuthUser = AdminUser;
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    User, Store, Users, Save, CheckCircle2, AlertCircle, X,
-    RefreshCw, LogOut, Plus, Trash2, Shield
+    User, Store, Save, CheckCircle2, AlertCircle, X,
+    RefreshCw, LogOut, Shield
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ function TextInput({ value, onChange, placeholder, disabled, type = 'text' }: an
 
 // 1. Profile Settings (Available to ALL)
 function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: any }) {
-    const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '' });
+    const [form, setForm] = useState({ firstName: '', lastName: '', email: '' });
     const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '' });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -81,7 +81,10 @@ function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: 
         try {
             const res = await fetch(`${API_URL}/api/admin/profile`, {
         credentials: 'include', method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentUser.id, ...form }) });
-            if (res.ok) toast.success('Profile updated.'); else throw new Error();
+            if (res.ok) {
+                toast.success('Profile updated.');
+                setTimeout(() => window.location.reload(), 800); // Reload to reflect changes in Header
+            } else throw new Error();
         } catch { toast.error('Failed to update profile.'); }
         setSaving(false);
     };
@@ -106,8 +109,7 @@ function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div><FieldLabel>First Name</FieldLabel><TextInput value={form.firstName} onChange={(v: string) => setForm({ ...form, firstName: v })} /></div>
                     <div><FieldLabel>Last Name</FieldLabel><TextInput value={form.lastName} onChange={(v: string) => setForm({ ...form, lastName: v })} /></div>
-                    <div><FieldLabel>Email (Read Only)</FieldLabel><TextInput value={form.email} disabled /></div>
-                    <div><FieldLabel>Phone Number</FieldLabel><TextInput value={form.phone} onChange={(v: string) => setForm({ ...form, phone: v })} /></div>
+                    <div className="md:col-span-2"><FieldLabel>Email (Read Only)</FieldLabel><TextInput value={form.email} disabled /></div>
                 </div>
                 <button onClick={handleSaveProfile} disabled={saving} className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-bold text-black bg-white hover:bg-white/90 disabled:opacity-50 transition-all">
                     {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Profile
@@ -192,100 +194,11 @@ function StoreSection({ toast }: { toast: any }) {
     );
 }
 
-// 3. Team Settings
-function TeamSection({ toast, currentUser }: { toast: any, currentUser: AuthUser }) {
-    const [team, setTeam] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [inviteForm, setInviteForm] = useState({ email: '', name: '', password: '' });
-    const [inviting, setInviting] = useState(false);
-
-    const fetchTeam = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`${API_URL}/api/admin/team`, { credentials: 'include' });
-            if (res.ok) setTeam(await res.json());
-        } catch { /* Silent fail */ }
-        setLoading(false);
-    }, []);
-
-    useEffect(() => { fetchTeam(); }, [fetchTeam]);
-
-    const handleInvite = async () => {
-        if (!inviteForm.email || !inviteForm.password) { toast.error('Email and password required.'); return; }
-        setInviting(true);
-        try {
-            const res = await fetch(`${API_URL}/api/admin/team`, {
-        credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(inviteForm) });
-            if (res.ok) {
-                toast.success('Team member added.');
-                setInviteForm({ email: '', name: '', password: '' });
-                fetchTeam();
-            } else throw new Error();
-        } catch { toast.error('Failed to add team member.'); }
-        setInviting(false);
-    };
-
-    const handleDelete = async (id: string) => {
-        if (id === currentUser.id) { toast.error("You cannot delete yourself."); return; }
-        try {
-            const res = await fetch(`${API_URL}/api/admin/team/${id}`, {
-        credentials: 'include', method: 'DELETE' });
-            if (res.ok) { toast.success('Member removed.'); fetchTeam(); } else throw new Error();
-        } catch { toast.error('Failed to remove member.'); }
-    };
-
-    if (loading) return <div className="animate-pulse h-64 bg-white/5 rounded-2xl" />;
-
-    return (
-        <div className="space-y-6">
-            {/* Invite Form */}
-            <div className="p-6 rounded-2xl border border-white/[0.05] bg-white/[0.02]">
-                <h3 className="text-white font-semibold text-[15px] mb-5">Add Team Member</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div><FieldLabel>Name</FieldLabel><TextInput value={inviteForm.name} onChange={(v: string) => setInviteForm({ ...inviteForm, name: v })} placeholder="John Doe" /></div>
-                    <div><FieldLabel>Email</FieldLabel><TextInput type="email" value={inviteForm.email} onChange={(v: string) => setInviteForm({ ...inviteForm, email: v })} placeholder="john@aarah.com" /></div>
-                    <div><FieldLabel>Initial Password</FieldLabel><TextInput type="password" value={inviteForm.password} onChange={(v: string) => setInviteForm({ ...inviteForm, password: v })} placeholder="Min 8 chars" /></div>
-                </div>
-                <button onClick={handleInvite} disabled={inviting || !inviteForm.email} className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-bold text-black bg-white hover:bg-white/90 disabled:opacity-50 transition-all">
-                    {inviting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add Member
-                </button>
-            </div>
-
-            {/* Team List */}
-            <div className="rounded-2xl border border-white/[0.05] bg-white/[0.01] overflow-hidden">
-                <table className="w-full text-left">
-                    <thead>
-                        <tr className="border-b border-white/[0.05]">
-                            <th className="px-5 py-4 text-[10px] uppercase text-white/40 font-semibold tracking-wider">Name</th>
-                            <th className="px-5 py-4 text-[10px] uppercase text-white/40 font-semibold tracking-wider">Email</th>
-                            <th className="px-5 py-4 text-[10px] uppercase text-white/40 font-semibold tracking-wider text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {team.map((member, i) => (
-                            <tr key={member.id} className={i !== team.length - 1 ? "border-b border-white/[0.02]" : ""}>
-                                <td className="px-5 py-4 text-[12px] text-white font-medium">{member.name} {member.id === currentUser.id && <span className="ml-2 text-[9px] text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">You</span>}</td>
-                                <td className="px-5 py-4 text-[12px] text-white/60">{member.email}</td>
-                                <td className="px-5 py-4 text-right">
-                                    <button onClick={() => handleDelete(member.id)} disabled={member.id === currentUser.id} className="p-2 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 disabled:opacity-30 transition-colors">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
-
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminSettingsPage() {
     const { items: toastItems, toast, remove: removeToast } = useToast();
     const { currentUser, isMounted, handleLogout } = useAdminAuth();
-    const [activeTab, setActiveTab] = useState<'profile' | 'store' | 'team'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'store'>('profile');
 
     if (!isMounted || !currentUser) return (
         <div className="min-h-screen flex items-center justify-center" style={{ background: '#0e0e0e' }}>
@@ -318,16 +231,12 @@ export default function AdminSettingsPage() {
                     <button onClick={() => setActiveTab('store')} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-medium transition-colors ${activeTab === 'store' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>
                         <Store className="w-4 h-4" /> Store Config
                     </button>
-                    <button onClick={() => setActiveTab('team')} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-medium transition-colors ${activeTab === 'team' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>
-                        <Users className="w-4 h-4" /> Team Access
-                    </button>
                 </nav>
 
                 {/* Main Content Area */}
                 <div className="flex-1 min-w-0">
                     {activeTab === 'profile' && <ProfileSection currentUser={currentUser} toast={toast} />}
                     {activeTab === 'store' && <StoreSection toast={toast} />}
-                    {activeTab === 'team' && <TeamSection toast={toast} currentUser={currentUser} />}
                 </div>
             </div>
 

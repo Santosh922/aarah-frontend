@@ -41,7 +41,12 @@ export default function ProductPageClient({
   const averageRating = totalReviews > 0 ? (totalRating / totalReviews) : 0;
   const distribution = [5, 4, 3, 2, 1].map(star => ({ rating: star, count: String(ratingCounts[star - 1]) }));
   const initialStats = { average: averageRating, total: totalReviews, distribution };
-  const [coupons, setCoupons] = useState<Coupon[]>(initialCoupons || []);
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    return (initialCoupons || []).filter(c => 
+      !c.appliesTo || c.appliesTo === 'all' || 
+      (c.appliesTo === 'specific_products' && c.selectedProductIds?.includes(product.id))
+    );
+  });
 
   const safeImages = product.images && product.images.length > 0 
     ? product.images 
@@ -61,10 +66,35 @@ export default function ProductPageClient({
   const [pincodeStatus, setPincodeStatus] = useState<'idle' | 'loading' | 'success' | 'invalid' | 'unserviceable'>('idle');
   const [deliveryCity, setDeliveryCity] = useState('');
 
+  const couponStorageKey = 'aarah_applied_coupon';
+
   const [isCouponsOpen, setIsCouponsOpen] = useState(false);
   const [promoInput, setPromoInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [promoFeedback, setPromoFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.sessionStorage.getItem(couponStorageKey);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored) as Coupon;
+      if (parsed?.code) {
+        setAppliedCoupon(parsed);
+        setPromoInput(parsed.code);
+        setPromoFeedback({ type: 'success', text: `${parsed.code} coupon restored.` });
+      }
+    } catch {
+      window.sessionStorage.removeItem(couponStorageKey);
+    }
+  }, []);
+
+  const setCouponState = (coupon: Coupon) => {
+    setAppliedCoupon(coupon);
+    setPromoInput(coupon.code);
+    window.sessionStorage.setItem(couponStorageKey, JSON.stringify(coupon));
+  };
 
   const isFavorited = favorites.includes(product.id);
   const productCountInCart = cartItems
@@ -154,11 +184,19 @@ export default function ProductPageClient({
       const res = await fetch(`${apiUrl}/api/storefront/discounts/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoInput, cartTotal: product.price }),
+        body: JSON.stringify({ code: promoInput.trim().toUpperCase(), cartTotal: product.price, cartProductIds: [product.id] }),
       });
       const data = await res.json();
       if (data.valid) {
-        setAppliedCoupon({ code: data.code, type: data.type, value: data.value, desc: data.desc, terms: data.terms });
+        const coupon = {
+          code: data.code,
+          type: data.type,
+          value: data.value,
+          desc: data.desc,
+          terms: data.terms,
+          minOrderValue: data.minOrderValue,
+        } as Coupon;
+        setCouponState(coupon);
         setPromoFeedback({ type: 'success', text: 'Coupon applied!' });
         setTimeout(() => setPromoFeedback(null), 4000);
       } else {
@@ -348,7 +386,17 @@ export default function ProductPageClient({
                       {appliedCoupon.terms && <span className="font-sans text-[8px] text-gray-500 uppercase tracking-widest mt-1">* {appliedCoupon.terms}</span>}
                     </div>
                   </div>
-                  <button onClick={() => { setAppliedCoupon(null); setPromoFeedback(null); setPromoInput(''); }} className="text-[9px] text-gray-400 hover:text-semantic-error tracking-widest uppercase font-bold transition-colors">Remove</button>
+                  <button
+                    onClick={() => {
+                      setAppliedCoupon(null);
+                      setPromoFeedback(null);
+                      setPromoInput('');
+                      window.sessionStorage.removeItem(couponStorageKey);
+                    }}
+                    className="text-[9px] text-gray-400 hover:text-semantic-error tracking-widest uppercase font-bold transition-colors"
+                  >
+                    Remove
+                  </button>
                 </div>
               )}
             </div>
@@ -447,8 +495,7 @@ export default function ProductPageClient({
         isOpen={isCouponsOpen}
         onClose={() => setIsCouponsOpen(false)}
         onApply={(coupon) => {
-          setAppliedCoupon(coupon);
-          setPromoInput(coupon.code);
+          setCouponState(coupon);
           setPromoFeedback({ type: 'success', text: 'Coupon applied! Final discount calculated at checkout.' });
           setIsCouponsOpen(false);
           setTimeout(() => setPromoFeedback(null), 4000);

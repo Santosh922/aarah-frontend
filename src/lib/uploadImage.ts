@@ -40,7 +40,8 @@ export async function uploadImage(
     });
 
     if (!res.ok) {
-      console.error(`Image upload failed: ${res.status} ${res.statusText}`);
+      const errText = await res.text();
+      console.error(`Image upload failed: ${res.status} ${res.statusText}. Details: ${errText}`);
       return null;
     }
 

@@ -54,15 +54,19 @@ export async function POST(request: Request) {
     });
 
     let subtotal = 0;
+    const serverValidatedItems: { id: string, price: number, quantity: number }[] = [];
     for (const clientItem of items as ClientItem[]) {
       const product = dbProducts.find(p => p.id === clientItem.id);
       if (!product) {
         return NextResponse.json({ error: `Product no longer available` }, { status: 400 });
       }
       subtotal += product.price * clientItem.quantity;
+      serverValidatedItems.push({ id: clientItem.id, price: product.price, quantity: clientItem.quantity });
     }
 
     let discountAmount = 0;
+    let freeShippingApplied = false;
+    
     if (discountCode) {
       const discount = await prisma.discount.findUnique({
         where: { code: discountCode }
@@ -74,18 +78,27 @@ export async function POST(request: Request) {
         const usageOk = !discount.usageLimit || discount.usedCount < discount.usageLimit;
         const minOk = !discount.minRequirementValue || subtotal >= discount.minRequirementValue;
         if (startOk && endOk && usageOk && minOk) {
-          const type = discount.type.toUpperCase();
-          if (type === 'PERCENTAGE' || discount.type === 'percentage') {
-            discountAmount = Math.round(subtotal * (discount.value / 100));
-          } else if (type === 'FIXED' || type === 'FIXED_AMOUNT' || discount.type === 'fixed_amount') {
-            discountAmount = Math.min(discount.value, subtotal);
+          const rawType = discount.type.toLowerCase();
+          const applicableSubtotal = discount.appliesTo === 'specific_products'
+            ? serverValidatedItems.filter(i => discount.selectedProductIds.includes(i.id)).reduce((s, i) => s + (i.price * i.quantity), 0)
+            : subtotal;
+
+          if (applicableSubtotal > 0) {
+            if (rawType === 'percentage') {
+              discountAmount = Math.round(applicableSubtotal * (discount.value / 100));
+            } else if (rawType === 'fixed_amount' || rawType === 'fixed') {
+              discountAmount = Math.min(discount.value, applicableSubtotal);
+            } else if (rawType === 'free_shipping') {
+              freeShippingApplied = true;
+            }
           }
         }
       }
     }
 
     const subtotalAfterDiscount = subtotal - discountAmount;
-    const shippingCost = subtotalAfterDiscount >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const shippingCost = freeShippingApplied ? 0 : (subtotalAfterDiscount >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE);
+
     const serverTotal = subtotalAfterDiscount + shippingCost;
     const serverTotalPaisa = Math.round(serverTotal * 100);
     const clientAmountPaisa = Math.round(Number(clientAmount) * 100);

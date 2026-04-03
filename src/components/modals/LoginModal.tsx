@@ -80,7 +80,17 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (!/[A-Z]/.test(password)) { setError('Password must contain at least one uppercase letter'); return; }
+    if (!/[a-z]/.test(password)) { setError('Password must contain at least one lowercase letter'); return; }
+    if (!/\d/.test(password)) { setError('Password must contain at least one number'); return; }
+    if (!/[@$!%*?&#]/.test(password)) { setError('Password must contain at least one special character'); return; }
     setIsLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/auth/register`, {

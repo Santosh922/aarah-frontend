@@ -102,6 +102,7 @@ export async function POST(request: Request) {
     }
 
     let discountAmount = 0;
+    let freeShippingApplied = false;
     let appliedDiscount: any = null;
 
     if (discountCode) {
@@ -117,19 +118,28 @@ export async function POST(request: Request) {
         const minOk = !discount.minRequirementValue || serverSubtotal >= discount.minRequirementValue;
 
         if (startOk && endOk && usageOk && minOk) {
-          const type = discount.type.toUpperCase();
-          if (type === 'PERCENTAGE' || discount.type === 'percentage') {
-            discountAmount = Math.round(serverSubtotal * (discount.value / 100));
-          } else if (type === 'FIXED' || type === 'FIXED_AMOUNT' || discount.type === 'fixed_amount') {
-            discountAmount = Math.min(discount.value, serverSubtotal);
+          const rawType = discount.type.toLowerCase();
+          const applicableSubtotal = discount.appliesTo === 'specific_products'
+            ? orderItems.filter((i: any) => discount.selectedProductIds.includes(i.productId)).reduce((s: number, i: any) => s + (i.price * i.quantity), 0)
+            : serverSubtotal;
+
+          if (applicableSubtotal > 0) {
+            if (rawType === 'percentage') {
+              discountAmount = Math.round(applicableSubtotal * (discount.value / 100));
+            } else if (rawType === 'fixed_amount' || rawType === 'fixed') {
+              discountAmount = Math.min(discount.value, applicableSubtotal);
+            } else if (rawType === 'free_shipping') {
+              freeShippingApplied = true;
+            }
+            appliedDiscount = discount;
           }
-          appliedDiscount = discount;
         }
       }
     }
 
     const subtotalAfterDiscount = serverSubtotal - discountAmount;
-    const shippingCost = subtotalAfterDiscount >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const shippingCost = freeShippingApplied ? 0 : (subtotalAfterDiscount >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE);
+
     const serverTotal = subtotalAfterDiscount + shippingCost;
     const serverTotalPaisa = Math.round(Number(serverTotal) * 100);
     const rzpAmount = Number(rzpPayment.amount);

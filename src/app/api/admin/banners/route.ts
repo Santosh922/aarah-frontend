@@ -13,6 +13,7 @@ const VALID_POSITIONS = [
   'footer_promo',
   'about_section',
   'contact_section',
+  'story_video',
 ] as const;
 
 function normalizePosition(pos: string | undefined): string {

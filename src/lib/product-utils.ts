@@ -9,7 +9,8 @@ export function getPrimaryImage(product: Product): string {
 
 export function getAvailableSizes(product: Product): string[] {
   if (product.variants && product.variants.length > 0) {
-    return product.variants.filter(v => v.stock > 0).map(v => v.size);
+    const rawSizes = product.variants.filter(v => v.stock > 0).map(v => v.size);
+    return Array.from(new Set(rawSizes));
   }
-  return product.sizes || [];
+  return Array.from(new Set(product.sizes || []));
 }

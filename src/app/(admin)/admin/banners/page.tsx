@@ -58,10 +58,10 @@ const POSITIONS: Record<BannerPosition, string> = {
 };
 
 const IMAGE_ONLY_POSITIONS: BannerPosition[] = ['about_section', 'contact_section'];
-const VIDEO_ONLY_POSITIONS: BannerPosition[] = ['story_video'];
+const VIDEO_ONLY_POSITIONS: BannerPosition[] = ['story_video', 'mama_story'];
 
 const BLANK_BANNER: Partial<Banner> = {
-    title: '', subtitle: '', buttonText: 'Shop Now', buttonLink: '/products',
+    title: '', subtitle: '', buttonText: 'Shop Now', buttonLink: '/shop',
     imageUrl: '', videoUrl: '', position: 'hero_main', isActive: true, sortOrder: 1
 };
 
@@ -396,7 +396,7 @@ function BannerDrawer({ banner, onSave, onClose }: { banner: Banner | null, onSa
 
                 <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6" style={{ scrollbarWidth: 'none' }}>
                     {VIDEO_ONLY_POSITIONS.includes(form.position as BannerPosition) ? (
-                        <SingleVideoDrop videoUrl={form.videoUrl} onChange={(v: string) => setForm({ ...form, videoUrl: v })} label="Story Video" />
+                        <SingleVideoDrop videoUrl={form.videoUrl} onChange={(v: string) => setForm({ ...form, videoUrl: v })} label="Story Video (Required)" />
                     ) : (
                         <SingleImageDrop imageUrl={form.imageUrl} onChange={(v: string) => setForm({ ...form, imageUrl: v })} label="Banner Image (Desktop & Mobile safe)" />
                     )}
@@ -453,7 +453,7 @@ function BannerDrawer({ banner, onSave, onClose }: { banner: Banner | null, onSa
 
                 <div className="px-6 py-4 border-t flex items-center justify-between shrink-0" style={{ borderColor: 'rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.01)' }}>
                     <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl text-[12px] font-semibold text-white/40 hover:text-white transition-colors">Cancel</button>
-                    <button type="button" onClick={handleSave} disabled={saving || !form.imageUrl}
+                    <button type="button" onClick={handleSave} disabled={saving || (VIDEO_ONLY_POSITIONS.includes(form.position as BannerPosition) ? !form.videoUrl : !form.imageUrl)}
                         className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-[12px] font-bold text-black bg-white hover:bg-white/90 transition-all active:scale-[0.98] disabled:opacity-50">
                         {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                         {saving ? 'Saving...' : isNew ? 'Create Banner' : 'Save Changes'}

@@ -118,6 +118,9 @@ export interface Coupon {
   desc: string;
   terms?: string;
   minOrderValue?: number;
+  appliesTo?: string;
+  selectedProductIds?: string[];
+  selectedCategoryIds?: string[];
 }
 
 export interface ProductsResponse {

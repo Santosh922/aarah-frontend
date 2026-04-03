@@ -45,6 +45,8 @@ export async function POST(request: Request) {
         minRequirementType: body.minRequirementType || 'none',
         minRequirementValue: body.minRequirementValue || 0,
         appliesTo: body.appliesTo || 'all',
+        selectedCategoryIds: Array.isArray(body.selectedCategoryIds) ? body.selectedCategoryIds : [],
+        selectedProductIds: Array.isArray(body.selectedProductIds) ? body.selectedProductIds : [],
         usageLimit: body.usageLimit || null,
         oncePerCustomer: body.oncePerCustomer || false,
         startDate: body.startDate ? new Date(body.startDate) : new Date(),

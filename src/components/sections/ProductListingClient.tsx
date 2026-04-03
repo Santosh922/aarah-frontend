@@ -55,12 +55,12 @@ function ProductListingContent({
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('search') || '';
 
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const PAGE_SIZE = 16;
+  const [baseProducts, setBaseProducts] = useState<Product[]>(initialProducts);
+  const [displayedProducts, setDisplayedProducts] = useState<Product[]>(initialProducts.slice(0, PAGE_SIZE));
   const [total, setTotal] = useState(initialTotal);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [fetchedPages, setFetchedPages] = useState<Set<number>>(new Set([1]));
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState(defaultSort);
@@ -70,40 +70,69 @@ function ProductListingContent({
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isMobileSortOpen, setIsMobileSortOpen] = useState(false);
 
-  const PAGE_SIZE = 16;
-
-  const fetchPage = useCallback(async (page: number) => {
-    const params = new URLSearchParams();
-    params.set(filterKey, filterValue);
-    if (searchQuery) params.set('search', searchQuery);
-    if (sortBy !== defaultSort) params.set('sortBy', sortBy);
-    selectedFabrics.forEach(f => params.append('fabric', f));
-    selectedSizes.forEach(s => params.append('sizes', s));
-    params.set('page', String(page));
-    params.set('pageSize', String(PAGE_SIZE));
-
-    const res = await fetch(`${API_URL}/api/storefront/products?${params}`);
-    if (!res.ok) throw new Error('Failed to fetch');
-    return res.json();
-  }, [filterKey, filterValue, searchQuery, sortBy, defaultSort, selectedFabrics, selectedSizes]);
-
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
-    setFetchedPages(new Set([1]));
     setCurrentPage(1);
     try {
-      const data = await fetchPage(1);
-      setProducts(data.products || []);
-      setTotal(data.total || 0);
+      const params = new URLSearchParams();
+      params.set(filterKey, filterValue);
+      if (searchQuery) params.set('search', searchQuery);
+      params.set('pageSize', '1000');
+
+      const res = await fetch(`${API_URL}/api/storefront/products?${params}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setBaseProducts(data.products || []);
     } catch (error) {
       console.error('Listing fetch error:', error);
-      setProducts([]);
+      setBaseProducts([]);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchPage]);
+  }, [filterKey, filterValue, searchQuery]);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => {
+    // We already have `initialProducts` (1000 items) from SSR.
+    // We only need to fetch if the `searchQuery` changes from the initial render.
+    if (searchQuery) {
+      fetchProducts();
+    } else {
+      setBaseProducts(initialProducts);
+    }
+  }, [fetchProducts, searchQuery, initialProducts]);
+
+  // Frontend Sorting and Filtering logic
+  useEffect(() => {
+    let result = [...baseProducts];
+
+    if (selectedFabrics.length > 0) {
+      result = result.filter(p => p.fabric && selectedFabrics.includes(p.fabric));
+    }
+
+    if (selectedSizes.length > 0) {
+      result = result.filter(p =>
+        p.variants && p.variants.some((v: any) => selectedSizes.includes(v.size) && v.stock > 0)
+      );
+    }
+
+    result.sort((a, b) => {
+      if (sortBy === 'price-low') return a.price - b.price;
+      if (sortBy === 'price-high') return b.price - a.price;
+      if (sortBy === 'newest') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      
+      // featured
+      if (a.featured && !b.featured) return -1;
+      if (!a.featured && b.featured) return 1;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
+    setTotal(result.length);
+    setDisplayedProducts(result.slice(0, currentPage * PAGE_SIZE));
+  }, [baseProducts, selectedFabrics, selectedSizes, sortBy, currentPage]);
+
+  const handleLoadMore = () => setCurrentPage(prev => prev + 1);
+
+  useEffect(() => { setCurrentPage(1); }, [selectedFabrics, selectedSizes, sortBy]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/fabrics`)
@@ -125,21 +154,7 @@ function ProductListingContent({
       .catch(() => {});
   }, []);
 
-  const handleLoadMore = async () => {
-    const nextPage = currentPage + 1;
-    if (fetchedPages.has(nextPage)) return;
-    setIsLoadingMore(true);
-    try {
-      const data = await fetchPage(nextPage);
-      setProducts(prev => [...prev, ...(data.products || [])]);
-      setFetchedPages(prev => new Set([...prev, nextPage]));
-      setCurrentPage(nextPage);
-    } catch (error) {
-      console.error('Load more error:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
+
 
   const toggleFabric = (fabric: string) =>
     setSelectedFabrics(prev => prev.includes(fabric) ? prev.filter(f => f !== fabric) : [...prev, fabric]);
@@ -185,16 +200,18 @@ function ProductListingContent({
             {bannerIcon && (
               <div className="inline-flex items-center justify-center space-x-2 bg-white/20 backdrop-blur-md text-white px-4 py-1.5 rounded-full mb-6 border border-white/30">
                 {bannerIcon}
-                <span className="font-sans text-[9px] font-bold tracking-widest uppercase">
-                  {banner?.subtitle || (title === 'New Arrivals' ? 'Freshly Crafted For You' : 'Loved by Mothers Everywhere')}
+                <span className="font-sans text-[9px] font-bold tracking-widest uppercase text-white">
+                  Loved by Mothers Everywhere
                 </span>
               </div>
             )}
-            <h1 className="font-serif text-4xl md:text-5xl mb-4 tracking-wide">{banner?.title || title}</h1>
-            <p className="font-sans text-xs md:text-sm text-white/90 tracking-wide leading-relaxed">
-              {banner?.subtitle || (title === 'New Arrivals'
+            <h1 className="font-serif text-4xl md:text-5xl mb-4 tracking-wide text-white drop-shadow-md">
+              {banner?.title || title}
+            </h1>
+            <p className="font-sans text-xs md:text-sm text-white tracking-wide leading-relaxed drop-shadow-md">
+              {title === 'New Arrivals'
                 ? 'Discover the latest additions to our maternity and nursing collection — designed for comfort, style, and confidence.'
-                : 'Our most-loved maternity and nursing pieces — designed for ultimate comfort and effortless style.')}
+                : 'Our most-loved maternity and nursing pieces — designed for ultimate comfort and effortless style.'}
             </p>
             {banner?.buttonText && banner?.buttonLink && (
               <a href={banner.buttonLink}
@@ -325,7 +342,7 @@ function ProductListingContent({
                   </div>
                 ))}
               </div>
-            ) : products.length === 0 ? (
+            ) : displayedProducts.length === 0 ? (
               <div className="py-20 text-center flex flex-col items-center justify-center border border-gray-100 bg-[#F9F9F9] mt-6">
                 <p className="font-sans text-[11px] text-gray-400 tracking-widest uppercase mb-6">No products found.</p>
                 <Link href="/shop" className="bg-[#191919] text-white px-8 py-3.5 font-sans text-[10px] font-bold tracking-[0.2em] uppercase hover:bg-black transition-colors">
@@ -335,21 +352,20 @@ function ProductListingContent({
             ) : (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-x-4 md:gap-x-6 gap-y-10 mt-6 relative z-10">
-                  {products.map(product => (
+                  {displayedProducts.map(product => (
                     <ProductCard key={product.id} product={product} />
                   ))}
                 </div>
-                {total > products.length && (
+                {total > displayedProducts.length && (
                   <div className="mt-12 flex flex-col items-center gap-4">
                     <p className="font-sans text-[10px] text-gray-500 tracking-widest uppercase">
-                      Showing {products.length} of {total} Products
+                      Showing {displayedProducts.length} of {total} Products
                     </p>
                     <button
                       onClick={handleLoadMore}
-                      disabled={isLoadingMore}
-                      className="px-12 py-4 bg-[#191919] text-white font-sans text-[10px] font-bold tracking-[0.2em] uppercase hover:bg-black transition-colors disabled:opacity-50"
+                      className="px-12 py-4 bg-[#191919] text-white font-sans text-[10px] font-bold tracking-[0.2em] uppercase hover:bg-black transition-colors"
                     >
-                      {isLoadingMore ? 'Loading...' : 'Load More'}
+                      Load More
                     </button>
                   </div>
                 )}

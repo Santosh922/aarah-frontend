@@ -116,6 +116,7 @@ export async function GET(request: Request) {
       description: product.description || '',
       tags: product.tags || [],
       categoryId: product.categoryId,
+      createdAt: product.createdAt,
       images: product.images.map(img => ({
         id: img.id,
         url: img.url,

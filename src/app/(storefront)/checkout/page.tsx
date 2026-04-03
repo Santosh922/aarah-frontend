@@ -25,6 +25,8 @@ function CheckoutContent() {
   const [mounted, setMounted] = useState(false);
   const [localAddresses, setLocalAddresses] = useState<AddressData[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<number | undefined>(undefined);
+  const [checkoutItems, setCheckoutItems] = useState<any[]>([]);
+  const [checkoutTotal, setCheckoutTotal] = useState(0);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
 
   const [showPolicy, setShowPolicy] = useState(false);
@@ -45,6 +47,19 @@ function CheckoutContent() {
       router.replace('/shop');
       return;
     }
+
+    let itemsToProcess = cartItems;
+    if (mode === 'buynow') {
+      const buyNowData = sessionStorage.getItem('aarah_buy_now');
+      if (buyNowData) {
+        try {
+          itemsToProcess = JSON.parse(buyNowData);
+        } catch { /* empty */ }
+      }
+    }
+    
+    setCheckoutItems(itemsToProcess);
+    setCheckoutTotal(itemsToProcess.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0));
     setLocalAddresses(contextAddresses as AddressData[]);
     if (contextAddresses.length > 0) {
       setSelectedAddress(contextAddresses[contextAddresses.length - 1].id);
@@ -60,7 +75,8 @@ function CheckoutContent() {
         sessionStorage.removeItem('aarah_applied_coupon');
       }
     }
-  }, [contextAddresses]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextAddresses, cartItems, mode]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/discounts`)
@@ -77,7 +93,7 @@ function CheckoutContent() {
       const res = await fetch(`${API_URL}/api/storefront/discounts/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim(), cartTotal }),
+        body: JSON.stringify({ code: code.trim(), cartTotal: checkoutTotal, cartProductIds: checkoutItems.map(i => i.id) }),
       });
       const data = await res.json();
       if (data.valid) {
@@ -87,6 +103,10 @@ function CheckoutContent() {
           value: data.value,
           desc: data.desc,
           terms: data.terms,
+          minOrderValue: data.minOrderValue,
+          appliesTo: data.appliesTo,
+          selectedProductIds: data.selectedProductIds,
+          selectedCategoryIds: data.selectedCategoryIds,
         };
         applyCoupon(coupon);
         setCouponFeedback({ type: 'success', text: `${data.desc} applied!` });
@@ -102,6 +122,8 @@ function CheckoutContent() {
 
   const applyCoupon = (coupon: Coupon) => {
     setAppliedCoupon(coupon);
+    setCouponInput(coupon.code);
+    setCouponFeedback({ type: 'success', text: `${coupon.code} applied!` });
     sessionStorage.setItem('aarah_applied_coupon', JSON.stringify(coupon));
   };
 
@@ -113,32 +135,39 @@ function CheckoutContent() {
   };
 
   const { subtotal, discountAmount, shippingFee, finalTotal, couponWarning } = useMemo(() => {
-    const currentSubtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const currentSubtotal = checkoutItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     let currentDiscount = 0;
-    let currentShipping = currentSubtotal > 2000 ? 0 : 99;
     let warning: string | null = null;
+    let freeShipping = false;
 
     if (appliedCoupon) {
       const minRequired = appliedCoupon.minOrderValue || 0;
       
+      const applicableSubtotal = appliedCoupon.appliesTo === 'specific_products'
+        ? checkoutItems.filter(i => appliedCoupon.selectedProductIds?.includes(i.id)).reduce((sum, item) => sum + (item.price * item.quantity), 0)
+        : currentSubtotal;
+      
       if (currentSubtotal >= minRequired) {
-        if (appliedCoupon.type === 'PERCENTAGE') {
-          currentDiscount = Math.round(currentSubtotal * (appliedCoupon.value / 100));
-          if (currentDiscount > currentSubtotal) currentDiscount = currentSubtotal;
-        } else if (appliedCoupon.type === 'FIXED') {
-          currentDiscount = appliedCoupon.value;
-          if (currentDiscount > currentSubtotal) currentDiscount = currentSubtotal;
-        } else if (appliedCoupon.type === 'FREE_SHIPPING') {
-          currentShipping = 0;
+        if (applicableSubtotal > 0) {
+          if (appliedCoupon.type === 'PERCENTAGE') {
+            currentDiscount = Math.round(applicableSubtotal * (appliedCoupon.value / 100));
+            if (currentDiscount > applicableSubtotal) currentDiscount = applicableSubtotal;
+          } else if (appliedCoupon.type === 'FIXED') {
+            currentDiscount = Math.min(appliedCoupon.value, applicableSubtotal);
+          } else if (appliedCoupon.type === 'FREE_SHIPPING') {
+            freeShipping = true;
+          }
+        } else {
+          warning = 'This coupon is not applicable to the products in your cart.';
         }
       } else {
         const shortfall = minRequired - currentSubtotal;
         warning = `Add ₹${shortfall.toLocaleString('en-IN')} more to unlock your ${appliedCoupon.code} discount.`;
-        currentDiscount = 0;
       }
     }
 
     const subtotalAfterDiscount = currentSubtotal - currentDiscount;
+    const currentShipping = freeShipping ? 0 : (subtotalAfterDiscount >= 2000 ? 0 : 99);
     const currentTotal = subtotalAfterDiscount + currentShipping;
 
     return {
@@ -148,7 +177,7 @@ function CheckoutContent() {
       finalTotal: currentTotal,
       couponWarning: warning
     };
-  }, [cartItems, appliedCoupon]);
+  }, [checkoutItems, appliedCoupon]);
 
   const handleSaveAddress = (addressData: AddressData) => {
     if (addressData.id) {
@@ -197,11 +226,7 @@ function CheckoutContent() {
     </div>
   );
 
-  if (cartItems.length === 0) {
-    if (mode !== 'buynow') {
-      router.replace('/shop');
-      return null;
-    }
+  if (checkoutItems.length === 0) {
     return (
       <main className="min-h-screen bg-[#FAFAFA] pt-32 pb-20 flex flex-col items-center justify-center">
         <h1 className="font-serif text-3xl text-primary-dark mb-4 tracking-widest uppercase">Your Bag is Empty</h1>
@@ -386,8 +411,8 @@ function CheckoutContent() {
           <div className="lg:col-span-5 bg-[#F4F4F4] p-8 lg:p-10 border border-gray-100 shadow-sm sticky top-32">
             <h3 className="font-sans text-[11px] font-bold tracking-widest uppercase text-primary-dark mb-8">YOUR ORDER</h3>
             <div className="flex flex-col space-y-6 mb-8 max-h-[40vh] overflow-y-auto scrollbar-thin pt-4 pr-2 pb-4">
-              {cartItems.map(item => (
-                <div key={`${item.id}-${item.size}`} className="flex space-x-4">
+              {checkoutItems.map((item, index) => (
+                <div key={`${item.id}-${item.size}-${index}`} className="flex space-x-4">
                   <div className="relative w-16 h-20 bg-gray-200 flex-shrink-0 border border-gray-200">
                     {item.image
                       ? <Image src={item.image} alt={item.name} fill className="object-cover" sizes="64px" />
@@ -409,17 +434,20 @@ function CheckoutContent() {
             {/* Price Calculation */}
             <div className="border-t border-gray-200 pt-6 space-y-4">
               <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase">
-                <span className="text-gray-500">Subtotal ({cartItems.length} items)</span>
+                <span className="text-gray-500">Subtotal ({checkoutItems.length} items)</span>
                 <span className="font-bold text-primary-dark">₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
 
-              {appliedCoupon && discountAmount > 0 && (
+              {appliedCoupon && (discountAmount > 0 || appliedCoupon.type === 'FREE_SHIPPING') && !couponWarning && (
                 <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase animate-in fade-in">
                   <span className="text-[#00a859] font-bold">
                     Discount ({appliedCoupon.code})
                     {appliedCoupon.type === 'PERCENTAGE' && <span className="text-[10px] ml-1 font-normal">({appliedCoupon.value}% OFF)</span>}
+                    {appliedCoupon.type === 'FREE_SHIPPING' && <span className="text-[10px] ml-1 font-normal">(FREE SHIPPING)</span>}
                   </span>
-                  <span className="font-bold text-[#00a859]">-₹{discountAmount.toLocaleString('en-IN')}</span>
+                  <span className="font-bold text-[#00a859]">
+                    {appliedCoupon.type === 'FREE_SHIPPING' ? 'APPLIED' : `-₹${discountAmount.toLocaleString('en-IN')}`}
+                  </span>
                 </div>
               )}
 

@@ -10,20 +10,12 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'All';
-    const viewType = searchParams.get('viewType') || 'all';
-    const assigneeId = searchParams.get('assigneeId');
     const search = searchParams.get('search');
 
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '15', 10));
 
     const whereClause: Prisma.OrderWhereInput = {};
-
-    if (viewType === 'pool') {
-      whereClause.assigneeId = null;
-    } else if (viewType === 'my-work' && assigneeId) {
-      whereClause.assigneeId = assigneeId;
-    }
 
     if (status !== 'All') {
       whereClause.status = status as any;
@@ -57,7 +49,6 @@ export async function GET(request: Request) {
       subtotal: o.subtotal, discount: o.discount, shipping: o.shipping, total: o.total,
       paymentMode: o.paymentMode, paymentId: o.paymentId, status: o.status,
       courierName: o.courierName, trackingId: o.trackingId,
-      assigneeId: o.assigneeId,
       createdAt: o.createdAt.toISOString()
     }));
 

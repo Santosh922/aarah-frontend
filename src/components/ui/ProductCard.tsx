@@ -23,6 +23,7 @@ export interface Product {
   descriptionHtml?: string;
   tags?: string[];
   variants?: { id?: string; size: string; color?: string; stock: number }[];
+  createdAt?: string;
   sizes?: string[];
   isBestSeller?: boolean;
   isNewArrival?: boolean;

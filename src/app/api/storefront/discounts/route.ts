@@ -18,18 +18,34 @@ export async function GET() {
       orderBy: { createdAt: 'desc' }
     });
 
-    const formattedCoupons = discounts.map((d) => ({
-      code: d.code,
-      desc: d.type === 'PERCENTAGE' 
-        ? `Get ${d.value}% off on your order!` 
-        : `Get ₹${d.value} off on your order!`,
-      terms: d.minRequirementValue > 0 
-        ? `Valid on orders above ₹${d.minRequirementValue}` 
-        : 'No minimum order required',
-      type: d.type,
-      value: d.value,
-      minOrderValue: d.minRequirementValue
-    }));
+    const formattedCoupons = discounts.map((d) => {
+      const rawType = d.type.toLowerCase();
+      const normalizedType = 
+        rawType === 'percentage' ? 'PERCENTAGE' :
+        rawType === 'fixed_amount' || rawType === 'fixed' ? 'FIXED' :
+        rawType === 'free_shipping' ? 'FREE_SHIPPING' :
+        d.type.toUpperCase();
+
+      let desc = '';
+      if (normalizedType === 'PERCENTAGE') desc = `Get ${d.value}% off on your order!`;
+      else if (normalizedType === 'FIXED') desc = `Get ₹${d.value} off on your order!`;
+      else if (normalizedType === 'FREE_SHIPPING') desc = 'Free shipping on your order!';
+      else desc = 'Special offer on your order!';
+
+      return {
+        code: d.code,
+        desc,
+        terms: d.minRequirementValue > 0 
+          ? `Valid on orders above ₹${d.minRequirementValue}` 
+          : 'No minimum order required',
+        type: normalizedType,
+        value: d.value,
+        minOrderValue: d.minRequirementValue,
+        appliesTo: d.appliesTo,
+        selectedProductIds: d.selectedProductIds,
+        selectedCategoryIds: d.selectedCategoryIds
+      };
+    });
 
     return NextResponse.json(formattedCoupons);
   } catch (error) {

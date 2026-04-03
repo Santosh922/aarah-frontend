@@ -5,7 +5,7 @@ import ProductListingClient from '@/components/sections/ProductListingClient';
 import type { Product } from '@/components/ui/ProductCard';
 import { Sparkles } from 'lucide-react';
 
-export const revalidate = 300;
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: 'New Arrivals | AARAH',
@@ -24,7 +24,7 @@ async function getPageData() {
   const [productsData, banner] = await Promise.all([
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/storefront/products?newArrival=true&page=1&pageSize=16&sortBy=newest`, { next: { revalidate: 300 } });
+        const res = await fetch(`${API_URL}/api/storefront/products?newArrival=true&page=1&pageSize=1000&sortBy=newest`, { cache: 'no-store' });
         return res.ok ? res.json() : { products: [] as Product[], total: 0 };
       } catch { return { products: [] as Product[], total: 0 }; }
     })(),

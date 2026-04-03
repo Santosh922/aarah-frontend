@@ -10,9 +10,9 @@ import {
     Truck, CheckCircle2, Clock, AlertTriangle, RotateCcw,
     Copy, MapPin, Phone, Mail,
     ChevronLeft, ChevronRight,
-    Eye, Edit3, Save, HandMetal, UserPlus,
+    Eye, Edit3, Save,
     Hourglass, Settings, Archive, Navigation, CheckCircle, XCircle,
-    ShieldCheck, Shield, ChevronDown, UserCheck, UserX, Users
+    ShieldCheck, Shield, ChevronDown
 } from 'lucide-react';
 
 import { API_URL } from '@/lib/api';
@@ -24,7 +24,6 @@ type OrderStatus =
     | 'Out for Delivery' | 'Delivered'
     | 'Cancelled' | 'Returned';
 
-interface TeamMember { id: string; name: string; avatar: string }
 interface OrderItem { sku: string; name: string; qty: number; price: number; size?: string; color?: string }
 interface ShipEvent { status: OrderStatus; timestamp: string; note?: string; location?: string }
 interface Order {
@@ -142,67 +141,6 @@ function StatusBadge({ status, size = 'sm' }: { status: OrderStatus; size?: 'xs'
     );
 }
 
-// ─── Assignee Picker ──────────────────────────────────────────────────────────────
-function AssigneePicker({
-    value, team, onChange, onClose
-}: { value: string; team: TeamMember[]; onChange: (member: TeamMember | null) => void; onClose: () => void }) {
-    const [query, setQuery] = useState('');
-    const ref = useRef<HTMLDivElement>(null);
-
-    const filtered = query.trim()
-        ? team.filter(m => m.name.toLowerCase().includes(query.toLowerCase()))
-        : team;
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [onClose]);
-
-    return (
-        <div ref={ref} className="absolute top-full mt-2 left-0 right-0 z-50 rounded-xl overflow-hidden"
-            style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
-            <div className="p-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-                    <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
-                        placeholder="Search team member…"
-                        className="w-full pl-8 pr-3 py-2 text-[11px] text-white outline-none rounded-lg placeholder:text-white/20"
-                        style={{ background: 'rgba(255,255,255,0.06)' }} />
-                </div>
-            </div>
-            <div className="py-1 max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-                <button onClick={() => onChange(null)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-                        style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                        <UserX className="w-3.5 h-3.5 text-red-400" />
-                    </div>
-                    <span className="text-[11px] text-red-400 font-semibold">Unassign</span>
-                </button>
-                {filtered.map(m => (
-                    <button key={m.id} onClick={() => onChange(m)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                            style={{
-                                background: 'rgba(255,255,255,0.08)',
-                                color: 'rgba(255,255,255,0.7)'
-                            }}>
-                            {m.avatar}
-                        </div>
-                        <div className="flex-1">
-                            <p className="text-white text-[11px] font-medium">{m.name}</p>
-                        </div>
-                    </button>
-                ))}
-                {filtered.length === 0 && (
-                    <p className="text-white/20 text-[11px] text-center py-4">No match found</p>
-                )}
-            </div>
-        </div>
-    );
-}
-
 // ─── Shipment Timeline ─────────────────────────────────────────────────────────
 function ShipmentTimeline({ order }: { order: Order }) {
     const isTerminal = order.status === 'Cancelled' || order.status === 'Returned';
@@ -258,15 +196,12 @@ function ShipmentTimeline({ order }: { order: Order }) {
 
 // ─── Order Detail Drawer ───────────────────────────────────────────────────────
 function OrderDrawer({
-    order, team, onClose, onStatusChange, onLabelPrint, onClaim, onAssign, currentUser
+    order, onClose, onStatusChange, onLabelPrint, currentUser
 }: {
     order: Order;
-    team: TeamMember[];
     onClose: () => void;
     onStatusChange: (id: string, status: OrderStatus, extra?: { trackingId?: string; courierName?: string }) => void;
     onLabelPrint: (id: string) => void;
-    onClaim: (id: string) => void;
-    onAssign: (id: string, member: TeamMember | null) => void;
     currentUser: { id: string; name: string };
 }) {
     const [activeTab, setActiveTab] = useState<'timeline' | 'items' | 'customer'>('timeline');
@@ -290,15 +225,8 @@ function OrderDrawer({
         setSaving(false); setEditStatus(false);
     };
 
-    const handleAssignSelect = (member: TeamMember | null) => {
-        onAssign(order.id, member);
-        setShowPicker(false);
-    };
-
     const canUpdateStatus = can.updateStatus();
     const canPrint = can.printLabel();
-    const isUnassigned = !order.assigneeId;
-    const isMyOrder = order.assigneeId === currentUser.id;
     const showQuickActions = canUpdateStatus || canPrint;
 
     const COURIERS = ['ST-courier', 'Delhivery', 'Shiprocket', 'BlueDart', 'DTDC', 'Ekart', 'Xpressbees'];
@@ -334,62 +262,6 @@ function OrderDrawer({
                         </div>
                     </div>
                     <StatusBadge status={order.status} size="md" />
-                </div>
-
-                {/* ── Assignment Panel ── */}
-                <div className="px-6 py-3 border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <UserPlus className="w-4 h-4 text-white/30 shrink-0" />
-                            <span className="text-[10px] text-white/40 uppercase tracking-widest font-semibold shrink-0">Assigned To</span>
-                            {order.assigneeName ? (
-                                <span className="text-blue-400 text-[11px] font-bold truncate">{order.assigneeName}</span>
-                            ) : (
-                                <span className="text-amber-400 text-[11px] font-bold">Unassigned</span>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                            {/* ADMIN: self-claim only when unassigned */}
-                            {isUnassigned && (
-                                <button onClick={() => { onClaim(order.id); onClose(); }}
-                                    className="px-3 py-1.5 bg-white text-black text-[10px] font-bold rounded-lg hover:scale-105 transition-transform flex items-center gap-1.5">
-                                    <HandMetal className="w-3.5 h-3.5" /> CLAIM
-                                </button>
-                            )}
-                            {!isUnassigned && isMyOrder && (
-                                <span className="text-[10px] text-green-400 font-semibold flex items-center gap-1">
-                                    <UserCheck className="w-3.5 h-3.5" /> Your Order
-                                </span>
-                            )}
-
-                            {/* Assign picker */}
-                            <div className="relative" ref={pickerAnchorRef}>
-                                <button onClick={() => setShowPicker(p => !p)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
-                                    style={{
-                                        background: showPicker ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
-                                        color: 'rgba(255,255,255,0.6)',
-                                        border: `1px solid ${showPicker ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`
-                                    }}>
-                                    <Users className="w-3.5 h-3.5" />
-                                    {order.assigneeName ? 'REASSIGN' : 'ASSIGN'}
-                                    <ChevronDown className={`w-3 h-3 transition-transform ${showPicker ? 'rotate-180' : ''}`} />
-                                </button>
-                                {showPicker && (
-                                    <AssigneePicker team={team} value={order.assigneeId ?? ''} onChange={handleAssignSelect} onClose={() => setShowPicker(false)} />
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* CLAIM button when unassigned (quick self-assign) */}
-                    {isUnassigned && (
-                        <button onClick={() => onAssign(order.id, team.find(m => m.id === currentUser.id) ?? null)}
-                            className="mt-2 flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/60 transition-colors">
-                            <HandMetal className="w-3 h-3" /> Self-assign this order
-                        </button>
-                    )}
                 </div>
 
                 {/* Quick Actions */}
@@ -583,7 +455,7 @@ function OrderDrawer({
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function AdminOrdersPage() {
-    const [view, setView] = useState<'all' | 'pool' | 'my-work'>('pool');
+    const [view, setView] = useState('all');
 
     // ─── AUTHENTICATION AUTO-SELECT ───
     const [currentUser, setCurrentUser] = useState<{ id: string; name: string }>({
@@ -604,23 +476,6 @@ export default function AdminOrdersPage() {
             .catch(() => { window.location.href = '/admin/login'; });
     }, []);
 
-    // 🔥 FIX 2: Dynamic Team Fetching
-    const [team, setTeam] = useState<TeamMember[]>([]);
-
-    useEffect(() => {
-        const fetchTeam = async () => {
-            try {
-                const res = await fetch(`${API_URL}/api/admin/team`, { credentials: 'include' });
-                if (res.ok) {
-                    const data = await res.json();
-                    setTeam(Array.isArray(data) ? data : []);
-                }
-            } catch (err) {
-                console.error('Failed to fetch team members:', err);
-            }
-        };
-        fetchTeam();
-    }, []);
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [total, setTotal] = useState(0);
@@ -700,19 +555,7 @@ export default function AdminOrdersPage() {
         setOrders(prev => prev.map(o => o.id === id ? { ...o, labelPrinted: true } : o));
     };
 
-    const handleClaimOrder = async (id: string) => {
-        await patchOrder({ id, assigneeId: currentUser.id, assigneeName: currentUser.name, action: 'CLAIM' });
-    };
 
-    const handleAssign = async (id: string, member: TeamMember | null) => {
-        await patchOrder({
-            id,
-            assigneeId: member?.id ?? null,
-            assigneeName: member?.name ?? null,
-            action: member ? 'ASSIGN' : 'UNASSIGN'
-        });
-        if (selected?.id === id) setSelected(prev => prev ? { ...prev, assigneeId: member?.id ?? null, assigneeName: member?.name ?? null } : prev);
-    };
 
     const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -734,7 +577,7 @@ export default function AdminOrdersPage() {
                 <div>
                     <h1 className="text-white font-bold text-[17px] tracking-tight leading-none" style={{ fontFamily: "'Georgia',serif" }}>Fulfillment Center</h1>
                     <p className="text-white/25 text-[10px] mt-1 tracking-widest uppercase">
-                        {view === 'all' ? 'All Orders' : view === 'pool' ? 'Global Pool' : 'My Workspace'} · {total.toLocaleString()} Orders
+                        {view === 'all' ? 'All Orders' : 'Orders'} · {total.toLocaleString()} Orders
                     </p>
                 </div>
 
@@ -757,14 +600,6 @@ export default function AdminOrdersPage() {
                             className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${view === 'all' ? 'bg-white text-black' : 'text-white/40'}`}>
                             ALL ORDERS
                         </button>
-                        <button onClick={() => setView('pool')}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${view === 'pool' ? 'bg-white text-black' : 'text-white/40'}`}>
-                            POOL
-                        </button>
-                        <button onClick={() => setView('my-work')}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${view === 'my-work' ? 'bg-white text-black' : 'text-white/40'}`}>
-                            WORKSPACE
-                        </button>
                     </div>
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
@@ -779,15 +614,6 @@ export default function AdminOrdersPage() {
                         <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
-            </div>
-
-            {/* ── Permissions notice bar ── */}
-            <div className="flex items-center gap-2 px-6 md:px-8 py-2 border-b"
-                style={{ borderColor: 'rgba(255,255,255,0.04)', background: 'rgba(96,165,250,0.04)' }}>
-                <Shield className="w-3 h-3 text-blue-400/60 shrink-0" />
-                <p className="text-[10px] text-white/30">
-                    Admin view: You have full access to claim, assign, and reassign orders.
-                </p>
             </div>
 
             {/* ── Status tabs ── */}
@@ -832,15 +658,13 @@ export default function AdminOrdersPage() {
                             <table className="w-full text-left">
                                 <thead>
                                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        {['Order ID', 'Assignee', 'Customer', 'Items', 'Status', 'Date', ''].map(h => (
+                                        {['Order ID', 'Customer', 'Items', 'Status', 'Date', ''].map(h => (
                                             <th key={h} className="px-5 py-4 text-[9px] font-bold tracking-[0.18em] uppercase text-white/25 whitespace-nowrap">{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {orders.map((order, i) => {
-                                        const isUnassigned = !order.assigneeId;
-                                        const isMyOrder = order.assigneeId === currentUser.id;
                                         return (
                                             <tr key={order.id} className="group cursor-pointer transition-colors duration-100"
                                                 style={{
@@ -857,14 +681,6 @@ export default function AdminOrdersPage() {
                                                         <div className="mt-1">
                                                             <span className="inline-flex items-center px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[8px] font-bold rounded uppercase tracking-wider animate-pulse"><AlertTriangle className="w-2 h-2 mr-1" /> Refund Action Req</span>
                                                         </div>
-                                                    )}
-                                                </td>
-
-                                                <td className="px-5 py-3.5">
-                                                    {order.assigneeName ? (
-                                                        <span className="px-2 py-1 bg-blue-500/10 text-blue-400 text-[9px] font-bold rounded-md uppercase tracking-wider">{order.assigneeName}</span>
-                                                    ) : (
-                                                        <span className="px-2 py-1 bg-amber-500/10 text-amber-400/70 text-[9px] font-bold rounded-md uppercase tracking-wider">Unassigned</span>
                                                     )}
                                                 </td>
 
@@ -897,13 +713,6 @@ export default function AdminOrdersPage() {
 
                                                 <td className="px-5 py-3.5 text-right">
                                                     <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
-                                                        {/* ADMIN: self-claim in pool */}
-                                                        {view === 'pool' && isUnassigned && (
-                                                            <button onClick={() => handleClaimOrder(order.id)}
-                                                                className="px-3 py-1.5 bg-white text-black text-[10px] font-bold rounded-lg hover:scale-105 transition-transform flex items-center gap-1">
-                                                                <HandMetal className="w-3 h-3" /> CLAIM
-                                                            </button>
-                                                        )}
                                                         {/* View icon always */}
                                                         <button onClick={() => setSelected(order)}
                                                             className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-all">
@@ -951,12 +760,9 @@ export default function AdminOrdersPage() {
             {selected && (
                 <OrderDrawer
                     order={selected}
-                    team={team} // 🔥 Passed dynamic team data here
                     onClose={() => setSelected(null)}
                     onStatusChange={handleStatusChange}
                     onLabelPrint={handleLabelPrint}
-                    onClaim={handleClaimOrder}
-                    onAssign={handleAssign}
                     currentUser={currentUser}
                 />
             )}

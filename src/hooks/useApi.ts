@@ -45,8 +45,8 @@ const HERO_FALLBACK: HeroData = {
   buttonLink: '/shop',
 };
 
-export function useHeroContent(): AsyncState<HeroData | null> {
-  const [data, setData] = useState<HeroData | null>(null);
+export function useHeroContent(): AsyncState<HeroData[]> {
+  const [data, setData] = useState<HeroData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,22 +61,22 @@ export function useHeroContent(): AsyncState<HeroData | null> {
         buttonText?: string; buttonLink?: string;
       }>) => {
         if (banners?.length > 0) {
-          const b = banners[0];
-          setData({
+          const mappedBanners = banners.map(b => ({
             backgroundImage: b.imageUrl,
             heading: b.title || HERO_FALLBACK.heading,
             subheading: b.subtitle || HERO_FALLBACK.subheading,
             buttonText: b.buttonText || HERO_FALLBACK.buttonText,
             buttonLink: b.buttonLink || HERO_FALLBACK.buttonLink,
-          });
+          }));
+          setData(mappedBanners);
         } else {
-          setData(HERO_FALLBACK);
+          setData([HERO_FALLBACK]);
         }
       })
       .catch(err => {
         console.error('useHeroContent error:', err);
         setError('Failed to load hero content.');
-        setData(HERO_FALLBACK);
+        setData([HERO_FALLBACK]);
       })
       .finally(() => setLoading(false));
   }, []);

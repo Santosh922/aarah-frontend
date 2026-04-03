@@ -31,7 +31,7 @@ function PaymentContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const mode         = searchParams.get('mode');
-  const { cartItems, cartTotal, addresses, clearCart } = useCart();
+  const { cartItems, cartTotal, addresses, clearCart, openCart } = useCart();
   const { currentUser } = useAuth();
 
   const [mounted, setMounted]           = useState(false);
@@ -44,9 +44,11 @@ function PaymentContent() {
   const [deliveryAddress, setDeliveryAddress] = useState<Address | null>(null);
 
   const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string; type: string; value: number; desc: string;
+    code: string; type: string; value: number; desc?: string;
   } | null>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
+  const [finalShipping, setFinalShipping]   = useState(99);
+  const [finalTotal, setFinalTotal]         = useState(0);
 
   useEffect(() => {
     const storedAddressId = sessionStorage.getItem('aarah_checkout_address_id');
@@ -85,28 +87,58 @@ function PaymentContent() {
       setPaymentTotal(cartTotal);
     }
 
-    const storedCoupon = sessionStorage.getItem('aarah_applied_coupon');
-    if (storedCoupon) {
+    const checkoutSummaryStr = sessionStorage.getItem('aarah_checkout_summary');
+    if (checkoutSummaryStr) {
       try {
-        setAppliedCoupon(JSON.parse(storedCoupon));
-      } catch {
-        sessionStorage.removeItem('aarah_applied_coupon');
+        const summary = JSON.parse(checkoutSummaryStr);
+        if (summary.appliedCoupon) setAppliedCoupon(summary.appliedCoupon);
+        if (summary.discountAmount !== undefined) setDiscountAmount(summary.discountAmount);
+        if (summary.shippingFee !== undefined) setFinalShipping(summary.shippingFee);
+        if (summary.finalTotal !== undefined) setFinalTotal(summary.finalTotal);
+      } catch (e) {
+        console.error("Failed to parse checkout summary", e);
+      }
+    } else {
+      // Fallback if summary is missing but coupon is set in session storage
+      const savedCoupon = sessionStorage.getItem('aarah_applied_coupon');
+      if (savedCoupon) {
+        try {
+          const parsed = JSON.parse(savedCoupon);
+          if (parsed?.code) {
+            setAppliedCoupon(parsed);
+            const baseSubtotal = paymentTotal > 0 ? paymentTotal : cartTotal;
+            const baseShipping = baseSubtotal >= 2000 ? 0 : 99;
+            
+            let localPaymentItems = cartItems;
+            if (mode === 'buynow') {
+              const buyNow = sessionStorage.getItem('aarah_buy_now');
+              if (buyNow) localPaymentItems = JSON.parse(buyNow);
+            }
+            
+            const applicableSubtotal = parsed.appliesTo === 'specific_products'
+              ? localPaymentItems.filter((i: any) => parsed.selectedProductIds?.includes(i.id)).reduce((s: number, i: any) => s + i.price * i.quantity, 0)
+              : baseSubtotal;
+
+            let computedDiscount = 0;
+            if (parsed.type === 'PERCENTAGE') computedDiscount = Math.round(applicableSubtotal * (parsed.value / 100));
+            else if (parsed.type === 'FIXED') computedDiscount = Math.min(parsed.value, applicableSubtotal);
+            else if (parsed.type === 'FREE_SHIPPING') computedDiscount = 0;
+            
+            if (computedDiscount > applicableSubtotal) computedDiscount = applicableSubtotal;
+            setDiscountAmount(computedDiscount);
+            setFinalShipping(parsed.type === 'FREE_SHIPPING' ? 0 : baseShipping);
+            setFinalTotal(baseSubtotal - computedDiscount + (parsed.type === 'FREE_SHIPPING' ? 0 : baseShipping));
+          }
+        } catch {
+          sessionStorage.removeItem('aarah_applied_coupon');
+        }
+      } else {
+        const baseShipping = cartTotal >= 2000 ? 0 : 99;
+        setFinalShipping(baseShipping);
+        setFinalTotal(cartTotal + baseShipping);
       }
     }
   }, [mode, cartItems, cartTotal, isValidating]);
-
-  useEffect(() => {
-    if (!appliedCoupon) { setDiscountAmount(0); return; }
-    if (appliedCoupon.type === 'PERCENTAGE')
-      setDiscountAmount(Math.round((paymentTotal * appliedCoupon.value) / 100));
-    else if (appliedCoupon.type === 'FIXED')
-      setDiscountAmount(Math.min(appliedCoupon.value, paymentTotal));
-    else
-      setDiscountAmount(0);
-  }, [appliedCoupon, paymentTotal]);
-
-  const finalShipping = paymentTotal - discountAmount > 2000 ? 0 : 99;
-  const finalTotal    = Math.max(0, paymentTotal - discountAmount + finalShipping);
 
   // ── Main payment handler ──────────────────────────────────────────────────
   const handlePayNow = async () => {
@@ -123,7 +155,7 @@ function PaymentContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-        amount: finalTotal,
+        clientAmount: finalTotal,
         items: paymentItems.map(i => ({ id: i.id, quantity: i.quantity, variantId: i.variantId })),
         discountCode: appliedCoupon?.code,
         receipt: `ARH-${Date.now()}`,
@@ -220,7 +252,7 @@ function PaymentContent() {
         price:     item.price,
         quantity:  item.quantity,
       })),
-      address: {
+      shippingAddress: {
         name:       deliveryAddress!.name,
         address:    deliveryAddress!.address,
         line1:      deliveryAddress!.address,
@@ -294,7 +326,7 @@ function PaymentContent() {
     <main className="min-h-screen bg-[#FAFAFA] pt-48 pb-20">
       <div className="max-w-content mx-auto px-4 sm:px-6 lg:px-8">
         <nav className="flex items-center text-[11px] font-sans tracking-[0.1em] text-gray-500 mb-10">
-          <Link href="/cart" className="hover:text-primary-dark transition-colors uppercase">Cart</Link>
+          <button onClick={openCart} className="hover:text-primary-dark transition-colors cursor-pointer uppercase">Cart</button>
           <ChevronRight className="w-3 h-3 mx-2" />
           <Link href="/checkout" className="hover:text-primary-dark transition-colors uppercase">Shipping</Link>
           <ChevronRight className="w-3 h-3 mx-2" />
@@ -409,10 +441,14 @@ function PaymentContent() {
                 <span className="text-gray-500">Subtotal</span>
                 <span className="font-bold text-primary-dark">₹{paymentTotal.toLocaleString('en-IN')}</span>
               </div>
-              {discountAmount > 0 && appliedCoupon && (
+              {appliedCoupon && (discountAmount > 0 || appliedCoupon.type === 'FREE_SHIPPING') && (
                 <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase">
-                  <span className="text-gray-500">Discount ({appliedCoupon.code})</span>
-                  <span className="font-bold text-semantic-success">-₹{discountAmount.toLocaleString('en-IN')}</span>
+                  <span className="text-gray-500">Discount ({appliedCoupon.code})
+                    {appliedCoupon.type === 'FREE_SHIPPING' && ' (FREE SHIPPING)'}
+                  </span>
+                  <span className="font-bold text-semantic-success">
+                    {appliedCoupon.type === 'FREE_SHIPPING' ? 'APPLIED' : `-₹${discountAmount.toLocaleString('en-IN')}`}
+                  </span>
                 </div>
               )}
               <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase">

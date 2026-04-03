@@ -14,11 +14,33 @@ async function getContactBanner() {
   }
 }
 
+async function getStoreSettings() {
+  try {
+    const res = await fetch(`${API_URL}/api/storefront/settings`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function ContactPage() {
   const banner = await getContactBanner();
+  const settings = await getStoreSettings();
   const { contactPage } = siteData;
 
   if (!contactPage) return null;
+
+  // Override hardcoded config with dynamic store settings
+  const infoItems = contactPage.infoSection.items.map((item: any) => {
+    if (item.id === 1 && settings?.email) {
+      return { ...item, value: settings.email };
+    }
+    if (item.id === 2 && settings?.phone) {
+      return { ...item, value: settings.phone };
+    }
+    return item;
+  });
 
   return (
     <main className="min-h-screen bg-white pt-20">
@@ -65,7 +87,7 @@ export default async function ContactPage() {
           <div className="lg:col-span-4 bg-[#F4F4F4] px-6 md:px-16 lg:px-12 py-20 flex flex-col justify-center">
             <span className="font-sans text-[10px] font-bold tracking-[0.2em] uppercase text-primary-dark mb-12 block">{contactPage.infoSection.title}</span>
             <div className="flex flex-col space-y-12">
-              {contactPage.infoSection.items.map((item: any) => (
+              {infoItems.map((item: any) => (
                 <div key={item.id} className="flex items-start space-x-4">
                   <div className="mt-1">{item.icon}</div>
                   <div className="flex flex-col">

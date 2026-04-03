@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Play } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Play, Pause } from 'lucide-react';
 import { API_URL } from '@/lib/api';
+import Image from 'next/image';
 
 interface MamaStoryBanner {
   id: string;
@@ -14,6 +15,21 @@ interface MamaStoryBanner {
 export default function DualFeaturePost() {
   const [videos, setVideos] = useState<MamaStoryBanner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [playingIds, setPlayingIds] = useState<Record<string, boolean>>({});
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+
+  const togglePlay = (id: string) => {
+    const el = videoRefs.current[id];
+    if (el) {
+      if (playingIds[id] === false) {
+        el.play();
+        setPlayingIds(p => ({ ...p, [id]: true }));
+      } else {
+        el.pause();
+        setPlayingIds(p => ({ ...p, [id]: false }));
+      }
+    }
+  };
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/banners?position=mama_story`)
@@ -34,42 +50,39 @@ export default function DualFeaturePost() {
   return (
     <section className="w-full py-20 bg-primary-light">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-10">
-          {videos.map(video => (
-            <div
-              key={video.id}
-              className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/3] w-full group cursor-pointer overflow-hidden bg-gray-100 shadow-sm"
-            >
-              <img
-                src={video.imageUrl}
-                alt={video.title || 'Mama Story'}
-                className="object-cover w-full h-full transition-transform duration-700 ease-out group-hover:scale-105 will-change-transform"
-              />
-              <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors duration-300" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                {/* Only render as an anchor if we have a real video URL */}
-                {video.videoUrl && video.videoUrl !== '#' ? (
-                  <a
-                    href={video.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="w-16 h-16 bg-primary-dark text-white rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-xl border border-gray-700"
-                    aria-label="Play video"
-                  >
-                    <Play className="w-6 h-6 ml-1" fill="none" stroke="currentColor" strokeWidth={1.5} />
-                  </a>
-                ) : (
+        <div className="flex flex-col md:flex-row items-center justify-center gap-6 lg:gap-10">
+          {videos.map(video => {
+            const isPlaying = playingIds[video.id] !== false; // default to true
+
+            return (
+              <div
+                key={video.id}
+                className="relative aspect-[9/16] w-full max-w-[280px] sm:max-w-[320px] rounded-2xl group overflow-hidden bg-gray-100 shadow-xl cursor-pointer shrink-0"
+                onClick={() => togglePlay(video.id)}
+              >
+                {/* Video Player Only */}
+                <video
+                  ref={el => { videoRefs.current[video.id] = el; }}
+                  src={video.videoUrl}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+
+                {/* Play/Pause Button */}
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
                   <button
                     className="w-16 h-16 bg-primary-dark text-white rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-xl border border-gray-700"
-                    aria-label="Play video"
+                    aria-label="Toggle video"
                   >
-                    <Play className="w-6 h-6 ml-1" fill="none" stroke="currentColor" strokeWidth={1.5} />
+                    {isPlaying ? <Pause className="w-6 h-6" fill="none" /> : <Play className="w-6 h-6 ml-1" fill="none" stroke="currentColor" strokeWidth={1.5} />}
                   </button>
-                )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
