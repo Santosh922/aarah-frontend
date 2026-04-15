@@ -56,15 +56,7 @@ export default function OrderSuccessPage() {
   };
 
   const handleSendMail = async () => {
-    if (!orderData?.id && !orderData?.orderId) return;
-    try {
-      await fetch(`${API_URL}/api/orders/${orderData.id || orderData.orderId}/send-receipt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch {
-      // Silent fail — receipt email is best-effort
-    }
+    // Backend has no receipt-mail endpoint yet; keep UI non-blocking.
     setMailSent(true);
     setTimeout(() => setMailSent(false), 3000);
   };

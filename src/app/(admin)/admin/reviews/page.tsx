@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { authFetch } from '@/lib/integrationAdapters';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageSquare, Check, X, Star, RefreshCw, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
@@ -48,7 +49,7 @@ export default function AdminReviewsPage() {
   const fetchReviews = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/reviews?status=${filter}`, { credentials: 'include' });
+      const res = await authFetch(`${API_URL}/api/admin/reviews?status=${filter}`);
       if (res.ok) {
         const data = await res.json();
         setReviews(data.reviews || []);
@@ -70,8 +71,7 @@ export default function AdminReviewsPage() {
 
   const handleUpdateStatus = async (id: string, newStatus: 'APPROVED' | 'REJECTED') => {
     try {
-      const res = await fetch(`${API_URL}/api/admin/reviews`, {
-        credentials: 'include',
+      const res = await authFetch(`${API_URL}/api/admin/reviews`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: newStatus })

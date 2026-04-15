@@ -7,6 +7,8 @@ import { ChevronDown, SlidersHorizontal, ArrowDownUp, X, Check } from 'lucide-re
 import ProductCard from '@/components/ui/ProductCard';
 import ProductGridSkeleton from '@/components/ui/ProductGridSkeleton';
 import { API_URL } from '@/lib/api';
+import { safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Product } from '@/components/ui/ProductCard';
 
 const DEFAULT_FABRICS = ['Cotton', 'Mul Mul', 'Denim', 'Hakoba', 'Linen', 'Georgette'];
@@ -59,7 +61,15 @@ function CategoryPageContent({ initialProducts, initialTotal, categoryName, cate
 
     const res = await fetch(`${API_URL}/api/storefront/products?${params}`);
     if (!res.ok) throw new Error('Failed to fetch');
-    return res.json();
+    const payload = await safeJson<any>(res, {});
+    const raw = unwrapApiResponse<any>(payload);
+    const rows = extractProducts(raw);
+    const products = filterActiveProducts(rows).map(toUiProduct);
+    console.log('STORE PRODUCTS:', products);
+    return {
+      products,
+      total: Number(raw?.total ?? raw?.totalElements ?? rows.length ?? 0),
+    };
   }, [categoryId, searchQuery, sortBy, selectedFabrics, selectedSizes]);
 
   const fetchProducts = useCallback(async () => {
@@ -82,15 +92,19 @@ function CategoryPageContent({ initialProducts, initialTotal, categoryName, cate
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/fabrics`)
-      .then(r => r.ok ? r.json() : [])
-      .then((fabrics: string[]) => {
+      .then(r => r.ok ? safeJson<any>(r, {}) : {})
+      .then((payload: any) => {
+        const data = unwrapApiResponse<any>(payload);
+        const fabrics = Array.isArray(data) ? data : [];
         if (Array.isArray(fabrics) && fabrics.length > 0) setFabricOptions(fabrics);
       })
       .catch(() => {});
 
     fetch(`${API_URL}/api/storefront/sizes`)
-      .then(r => r.ok ? r.json() : [])
-      .then((sizes: string[]) => {
+      .then(r => r.ok ? safeJson<any>(r, {}) : {})
+      .then((payload: any) => {
+        const data = unwrapApiResponse<any>(payload);
+        const sizes = Array.isArray(data) ? data : [];
         if (Array.isArray(sizes) && sizes.length > 0) setSizeOptions(sizes);
       })
       .catch(() => {});

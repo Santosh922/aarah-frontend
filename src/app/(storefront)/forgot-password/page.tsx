@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { API_URL } from '@/lib/api';
 import Link from 'next/link';
 import { ArrowLeft, MailCheck, Loader2 } from 'lucide-react';
+import { ApiError } from '@/lib/apiClient';
+import { sendForgotOtp } from '@/services/authService';
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail]           = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading]   = useState(false);
   const [error, setError]           = useState('');
@@ -15,34 +16,22 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError('');
 
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Please enter a valid email address.');
+    if (!identifier.trim()) {
+      setError('Please enter your email or phone number.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-
-      // ── Always show the success screen regardless of whether the email
-      //    exists in the DB. This prevents user enumeration attacks where
-      //    an attacker could probe which emails are registered. ────────────
-      if (res.ok || res.status === 404) {
-        setIsSubmitted(true);
-        return;
+      await sendForgotOtp({ identifier: identifier.trim() });
+      setIsSubmitted(true);
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Could not connect to the server. Please check your internet connection.');
       }
-
-      // Only surface a real error for genuine server failures (5xx)
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || `Something went wrong (${res.status}). Please try again.`);
-
-    } catch {
-      setError('Could not connect to the server. Please check your internet connection.');
     } finally {
       setIsLoading(false);
     }
@@ -66,16 +55,16 @@ export default function ForgotPasswordPage() {
               Reset Password
             </h1>
             <p className="font-sans text-[11px] text-gray-500 tracking-widest uppercase leading-relaxed mb-8">
-              Enter the email address associated with your account, and we will send you a link to reset your password.
+              Enter your email address or phone number. We will send an OTP to your registered phone number.
             </p>
 
             <form onSubmit={handleSubmit} className="w-full flex flex-col space-y-5">
               <div className="flex flex-col text-left">
                 <input
-                  type="email"
-                  placeholder="EMAIL ADDRESS"
-                  value={email}
-                  onChange={e => { setEmail(e.target.value); setError(''); }}
+                  type="text"
+                  placeholder="EMAIL OR PHONE NUMBER"
+                  value={identifier}
+                  onChange={e => { setIdentifier(e.target.value); setError(''); }}
                   className={`bg-[#F9F9F9] px-4 py-4 outline-none text-[10px] font-sans tracking-widest text-primary-dark border-b-2 transition-colors ${
                     error ? 'border-red-500' : 'border-transparent focus:border-primary-dark'
                   }`}
@@ -102,7 +91,7 @@ export default function ForgotPasswordPage() {
                     <span>Sending...</span>
                   </div>
                 ) : (
-                  'Send Reset Link'
+                  'Send OTP'
                 )}
               </button>
             </form>
@@ -114,26 +103,26 @@ export default function ForgotPasswordPage() {
             </div>
 
             <h1 className="font-serif text-2xl text-primary-dark mb-4 tracking-widest uppercase">
-              Check Your Email
+              OTP Sent
             </h1>
 
             <p className="font-sans text-[11px] text-gray-500 tracking-widest uppercase leading-relaxed mb-8">
-              If an account exists for <span className="font-bold text-primary-dark">{email}</span>,
-              we've sent a password reset link. Check your inbox and spam folder.
+              If an account exists for <span className="font-bold text-primary-dark">{identifier}</span>,
+              we have sent an OTP to your registered phone number.
             </p>
 
             <Link
-              href="/"
+              href={`/reset-password?identifier=${encodeURIComponent(identifier.trim())}`}
               className="w-full bg-[#191919] text-white py-4 font-sans text-[11px] font-bold tracking-[0.2em] uppercase hover:bg-black transition-colors shadow-md flex justify-center"
             >
-              Back to Home
+              Continue to Verify OTP
             </Link>
 
             <button
               onClick={() => { setIsSubmitted(false); setError(''); }}
               className="font-sans text-[9px] text-gray-400 tracking-widest uppercase underline underline-offset-4 mt-8 hover:text-primary-dark transition-colors"
             >
-              Didn't receive the email? Try again.
+              Didn&apos;t receive the OTP? Try again.
             </button>
           </div>
         )}

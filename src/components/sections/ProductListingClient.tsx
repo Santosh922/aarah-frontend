@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ChevronDown, ChevronUp, ArrowDownUp, X, Check } from 'lucide-react';
 import ProductCard from '@/components/ui/ProductCard';
 import ProductGridSkeleton from '@/components/ui/ProductGridSkeleton';
 import { API_URL } from '@/lib/api';
+import { safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Product } from '@/components/ui/ProductCard';
 
 const DEFAULT_FABRICS = ['Cotton', 'Mul Mul', 'Denim', 'Hakoba', 'Linen', 'Georgette'];
@@ -55,10 +57,14 @@ function ProductListingContent({
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('search') || '';
 
+  const normalizedInitialProducts = useMemo(
+    () => filterActiveProducts(Array.isArray(initialProducts) ? initialProducts : []).map(toUiProduct),
+    [initialProducts],
+  );
   const PAGE_SIZE = 16;
-  const [baseProducts, setBaseProducts] = useState<Product[]>(initialProducts);
-  const [displayedProducts, setDisplayedProducts] = useState<Product[]>(initialProducts.slice(0, PAGE_SIZE));
-  const [total, setTotal] = useState(initialTotal);
+  const [baseProducts, setBaseProducts] = useState<Product[]>(normalizedInitialProducts);
+  const [displayedProducts, setDisplayedProducts] = useState<Product[]>(normalizedInitialProducts.slice(0, PAGE_SIZE));
+  const [total, setTotal] = useState(normalizedInitialProducts.length || initialTotal);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
@@ -81,8 +87,11 @@ function ProductListingContent({
 
       const res = await fetch(`${API_URL}/api/storefront/products?${params}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      setBaseProducts(data.products || []);
+      const payload = await safeJson<any>(res, {});
+      const rawProducts = extractProducts(payload);
+      const products = filterActiveProducts(rawProducts).map(toUiProduct);
+      console.log('STORE PRODUCTS:', products);
+      setBaseProducts(products);
     } catch (error) {
       console.error('Listing fetch error:', error);
       setBaseProducts([]);
@@ -97,9 +106,9 @@ function ProductListingContent({
     if (searchQuery) {
       fetchProducts();
     } else {
-      setBaseProducts(initialProducts);
+      setBaseProducts(normalizedInitialProducts);
     }
-  }, [fetchProducts, searchQuery, initialProducts]);
+  }, [fetchProducts, searchQuery, normalizedInitialProducts]);
 
   // Frontend Sorting and Filtering logic
   useEffect(() => {
@@ -136,8 +145,10 @@ function ProductListingContent({
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/fabrics`)
-      .then(r => r.ok ? r.json() : [])
-      .then((fabrics: string[]) => {
+      .then(r => r.ok ? safeJson<any>(r, {}) : {})
+      .then((payload: any) => {
+        const data = unwrapApiResponse<any>(payload);
+        const fabrics = Array.isArray(data) ? data : [];
         if (Array.isArray(fabrics) && fabrics.length > 0) {
           setFabricOptions(fabrics);
         }
@@ -145,8 +156,10 @@ function ProductListingContent({
       .catch(() => {});
 
     fetch(`${API_URL}/api/storefront/sizes`)
-      .then(r => r.ok ? r.json() : [])
-      .then((sizes: string[]) => {
+      .then(r => r.ok ? safeJson<any>(r, {}) : {})
+      .then((payload: any) => {
+        const data = unwrapApiResponse<any>(payload);
+        const sizes = Array.isArray(data) ? data : [];
         if (Array.isArray(sizes) && sizes.length > 0) {
           setSizeOptions(sizes);
         }

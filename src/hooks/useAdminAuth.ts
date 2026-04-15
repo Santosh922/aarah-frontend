@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { API_URL } from '@/lib/api';
+import { useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import type { AdminUser } from '@/types';
 
 export type { AdminUser };
@@ -15,59 +15,39 @@ interface UseAdminAuthReturn {
 /**
  * useAdminAuth
  *
- * On mount it calls GET /api/auth/admin/me with the httpOnly cookie.
- * - 401  → redirects to /admin/login immediately
- * - ok   → sets currentUser, isMounted = true
- * - network error → redirects to /admin/login
+ * Reads admin auth state from shared AuthContext (token + user).
+ * - if missing token or non-admin role → redirects to /admin/login
  *
- * handleLogout calls POST /api/auth/admin/logout, clears any legacy
- * localStorage remnants, then redirects to /admin/login.
+ * handleLogout clears the shared auth session, then redirects.
  *
  * Usage:
  *   const { currentUser, isMounted, handleLogout } = useAdminAuth();
  *   if (!isMounted || !currentUser) return <Spinner />;
  */
 export function useAdminAuth(): UseAdminAuthReturn {
-  const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const { currentUser, token, isHydrated, clearSession } = useAuth();
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   useEffect(() => {
-    fetch(`${API_URL}/api/auth/admin/me`, { credentials: 'include' })
-      .then(res => {
-        if (res.status === 401) {
-          window.location.href = '/admin/login';
-          return null;
-        }
-        return res.json();
-      })
-      .then(data => {
-        if (!data) return;
-        setCurrentUser({
-          id:     data.id     ?? 'admin_01',
-          name:   data.name   ?? 'Admin',
-          avatar: (data.name?.[0] ?? 'A').toUpperCase(),
-          email:  data.email  ?? '',
-        });
-        setIsMounted(true);
-      })
-      .catch(() => {
-        window.location.href = '/admin/login';
-      });
-  }, []);
+    if (!isHydrated) return;
+    if (!token || !isAdmin) {
+      window.location.href = '/admin/login';
+    }
+  }, [isHydrated, token, isAdmin]);
 
   const handleLogout = async () => {
-    try {
-      await fetch(`${API_URL}/api/auth/admin/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch {
-      // Best-effort — always redirect even if the request fails
-    }
-    // Clear any localStorage remnants from the old auth system
-    localStorage.removeItem('aarah_admin_session');
+    clearSession();
     window.location.href = '/admin/login';
   };
 
-  return { currentUser, isMounted, handleLogout };
+  const mappedAdmin: AdminUser | null = currentUser && isAdmin
+    ? {
+        id: currentUser.customerId,
+        name: currentUser.name,
+        avatar: (currentUser.name?.[0] ?? 'A').toUpperCase(),
+        email: currentUser.email ?? '',
+      }
+    : null;
+
+  return { currentUser: mappedAdmin, isMounted: isHydrated, handleLogout };
 }

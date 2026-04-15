@@ -2,6 +2,7 @@
 
 import { API_URL } from '@/lib/api';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { authFetch, safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
 
 import {
     useState, useEffect, useCallback, useRef
@@ -152,10 +153,11 @@ function AnalyticsView({ toast, currentUser }: { toast: any, currentUser: import
     const fetchAnalytics = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true); else setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/admin/dashboard?range=${dateRange}`, { credentials: 'include' });
+            const res = await authFetch(`${API_URL}/api/admin/dashboard?range=${dateRange}`);
             if (res.ok) {
-                const json = await res.json();
-                setData(json);
+                const payload = await safeJson<any>(res, {});
+                const data = unwrapApiResponse<any>(payload);
+                setData(data);
             } else {
                 setData(null);
             }
@@ -171,10 +173,9 @@ function AnalyticsView({ toast, currentUser }: { toast: any, currentUser: import
     const handleExport = async () => {
         setExporting(true);
         try {
-            const res = await fetch(`${API_URL}/api/admin/dashboard/export?range=${dateRange}`, {
-                credentials: 'include',
-                method: 'POST',
-            });
+            // Backend contract may not expose /export for every deployment.
+            // Handle unavailable endpoint gracefully.
+            const res = await authFetch(`${API_URL}/api/admin/dashboard/export?range=${dateRange}`, { method: 'POST' });
             if (!res.ok) { toast.error('Export failed.'); return; }
 
             // Trigger file download from the response blob

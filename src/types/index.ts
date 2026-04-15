@@ -28,6 +28,9 @@ export interface UserProfile {
   name: string;
   phone: string;
   email?: string;
+  role?: string;
+  status?: string;
+  phoneVerified?: boolean;
 }
 
 export interface ProductImage {

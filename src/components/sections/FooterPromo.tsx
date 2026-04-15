@@ -1,14 +1,12 @@
-import prisma from '@/lib/prisma';
 import Image from 'next/image';
 import Link from 'next/link';
+import { API_URL } from '@/lib/api';
 
 export default async function FooterPromo() {
   let banner = null;
   try {
-    const banners = await prisma.banner.findMany({
-      where: { position: 'footer_promo', isActive: true },
-      take: 1,
-    });
+    const res = await fetch(`${API_URL}/api/storefront/banners?position=footer_promo`, { cache: 'no-store' });
+    const banners = res.ok ? await res.json() : [];
     if (banners.length > 0) banner = banners[0];
   } catch {}
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard from '@/components/ui/ProductCard';
 import { API_URL } from '@/lib/api';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 
 interface Product {
   id: string;
@@ -34,8 +35,10 @@ export default function HomeFavorites() {
       if (!Array.isArray(favoriteIds) || favoriteIds.length === 0) return;
       fetch(`${API_URL}/api/storefront/products?ids=${favoriteIds.join(',')}&pageSize=50`)
         .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (data?.products) setProducts(data.products);
+        .then(payload => {
+          if (!payload) return;
+          const products = filterActiveProducts(extractProducts(payload)).map(toUiProduct);
+          setProducts(products as Product[]);
         })
         .catch(() => {});
     } catch {}

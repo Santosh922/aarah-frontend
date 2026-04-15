@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Play } from 'lucide-react';
 
 import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannerById } from '@/lib/integrationAdapters';
 
 const DEFAULT = {
   kicker:         'ABOUT US',
@@ -27,8 +28,7 @@ export default function QuoteBanner() {
         
         // If there's a selected story video, fetch it from banners
         if (settings?.selectedStoryVideoId) {
-          fetch(`${API_URL}/api/storefront/banners/${settings.selectedStoryVideoId}`)
-            .then(r => r.json())
+          fetchStorefrontBannerById(settings.selectedStoryVideoId)
             .then(banner => {
               if (banner?.videoUrl) setStory(s => ({ ...s, videoUrl: banner.videoUrl }));
             })

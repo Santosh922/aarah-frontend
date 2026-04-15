@@ -1,4 +1,5 @@
 import { API_URL } from '@/lib/api';
+import { authFetch } from '@/lib/integrationAdapters';
 
 /**
  * uploadImage
@@ -31,9 +32,8 @@ export async function uploadImage(
     formData.append('file', file);
     formData.append('context', context);
 
-    const res = await fetch(`${API_URL}/api/admin/upload`, {
+    const res = await authFetch(`${API_URL}/api/admin/upload`, {
       method: 'POST',
-      credentials: 'include',
       // Do NOT set Content-Type — browser sets it automatically with the
       // correct multipart boundary when body is FormData
       body: formData,

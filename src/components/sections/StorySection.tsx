@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Play, Pause } from 'lucide-react';
 import Image from 'next/image';
+import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannerById } from '@/lib/integrationAdapters';
 
 // Real brand copy — replace lorem ipsum
 const DEFAULT_STORY = {
@@ -32,7 +34,7 @@ export default function StorySection() {
 
   useEffect(() => {
     // Fetch store settings first
-    fetch(`/api/storefront/settings`)
+    fetch(`${API_URL}/api/storefront/settings`)
       .then(r => r.json())
       .then(settings => {
         if (settings?.storyTitle)       setStory(s => ({ ...s, title:          settings.storyTitle }));
@@ -41,15 +43,14 @@ export default function StorySection() {
         
         // Fetch explicit mapped video, or fallback to the latest uploaded story_video banner
         if (settings?.selectedStoryVideoId) {
-          fetch(`/api/storefront/banners/${settings.selectedStoryVideoId}`)
-            .then(r => r.json())
-            .then(banner => {
+          fetchStorefrontBannerById(settings.selectedStoryVideoId)
+            .then((banner) => {
               if (banner?.videoUrl) setStory(s => ({ ...s, videoUrl: banner.videoUrl }));
             })
             .catch(e => console.error('Failed to fetch explicit story banner:', e));
         } else {
           // Fallback: Just grab the first active video banner in the story_video position
-          fetch(`/api/storefront/banners?position=story_video`)
+          fetch(`${API_URL}/api/storefront/banners?position=story_video`)
             .then(r => r.json())
             .then((banners: any[]) => {
               if (banners && banners.length > 0 && banners[0].videoUrl) {

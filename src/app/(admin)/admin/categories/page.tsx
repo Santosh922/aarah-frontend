@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { authFetch } from '@/lib/integrationAdapters';
 import { processImageFile } from '@/lib/uploadImage';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
@@ -251,7 +252,7 @@ function CategoryDrawer({ category, mode, allCategories, currentUserId, defaultP
     useEffect(() => {
         if (tab === 'products' && category?.id) {
             setLoadingProducts(true);
-            fetch(`${API_URL}/api/admin/products?categoryId=${category.id}&pageSize=50`, { credentials: 'include' })
+            authFetch(`${API_URL}/api/admin/products?categoryId=${category.id}&pageSize=50`)
                 .then(res => res.json())
                 .then(data => setCategoryProducts(data.products || data || []))
                 .catch(() => console.error('Failed to fetch products'))
@@ -810,13 +811,18 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
     const fetchCats = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true); else setLoading(true);
         try {
-            const qs = new URLSearchParams({ search: debouncedSearch, status: filterStatus, sort: sortBy });
-            const res = await fetch(`${API_URL}/api/admin/categories?${qs}`, { credentials: 'include' });
+            const qs = new URLSearchParams();
+            if (debouncedSearch.trim()) qs.set('search', debouncedSearch.trim());
+            if (filterStatus !== 'All') qs.set('status', filterStatus);
+            qs.set('sort', sortBy);
+            const res = await authFetch(`${API_URL}/api/admin/categories?${qs}`);
 
             if (!res.ok) throw new Error('Failed to fetch');
 
             const data = await res.json();
-            let list = Array.isArray(data) ? data : (data.categories || []);
+            let list = Array.isArray(data)
+                ? data
+                : (Array.isArray(data?.data) ? data.data : (data?.categories || []));
 
             // Client-side filtering/sorting fallback in case backend doesn't handle it yet
             if (debouncedSearch.trim()) {
@@ -865,8 +871,7 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
     // API WRAPPERS
     const handleSave = useCallback(async (data: Partial<Category>, id?: string) => {
         try {
-            const res = await fetch(`${API_URL}/api/admin/categories`, {
-        credentials: 'include',
+            const res = await authFetch(`${API_URL}/api/admin/categories`, {
                 method: id ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(id ? { ...data, id } : data)
@@ -883,10 +888,7 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
             toast.error(`Cannot delete — ${children.length} sub-categories exist. Remove them first.`); setDeleteTarget(null); return;
         }
         try {
-            const res = await fetch(`${API_URL}/api/admin/categories/${cat.id}`, {
-                credentials: 'include',
-                method: 'DELETE',
-            });
+            const res = await authFetch(`${API_URL}/api/admin/categories/${cat.id}`, { method: 'DELETE' });
 
             if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete');
             setCategories(prev => prev.filter(c => c.id !== cat.id));
@@ -900,8 +902,7 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
     const handleMerge = useCallback(async (targetId: string) => {
         if (!mergeTarget) return;
         try {
-            const res = await fetch(`${API_URL}/api/admin/categories/merge`, {
-        credentials: 'include',
+            const res = await authFetch(`${API_URL}/api/admin/categories/merge`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sourceId: mergeTarget.id, targetId })
@@ -915,8 +916,7 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
     const handleBulkStatus = useCallback(async (status: CategoryStatus) => {
         try {
             await Promise.all(Array.from(selected).map(async id => {
-                const res = await fetch(`${API_URL}/api/admin/categories`, {
-        credentials: 'include',
+                const res = await authFetch(`${API_URL}/api/admin/categories`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id, status })
@@ -932,10 +932,7 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
         const ids = Array.from(selected);
         const results = await Promise.allSettled(
             ids.map(id =>
-                fetch(`${API_URL}/api/admin/categories/${id}`, {
-                    credentials: 'include',
-                    method: 'DELETE',
-                }).then(res => { if (!res.ok) throw new Error(id); return id; })
+                authFetch(`${API_URL}/api/admin/categories/${id}`, { method: 'DELETE' }).then(res => { if (!res.ok) throw new Error(id); return id; })
             )
         );
         const succeeded = results.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<string>).value);
@@ -971,8 +968,7 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
         reordered.splice(toIdx, 0, moved);
         const updates = reordered.map((c, i) => ({ id: c.id, sortOrder: i + 1, parentId: c.parentId }));
         try {
-            const res = await fetch(`${API_URL}/api/admin/categories/reorder`, {
-        credentials: 'include',
+            const res = await authFetch(`${API_URL}/api/admin/categories/reorder`, {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates)
             });

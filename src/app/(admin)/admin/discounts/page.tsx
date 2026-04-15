@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { authFetch } from '@/lib/integrationAdapters';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 import {
@@ -486,20 +487,20 @@ function DiscountsView({ toast }: { toast: any }) {
         if (isRefresh) setRefreshing(true); else setLoading(true);
         try {
             // Load Discounts
-            const resD = await fetch(`${API_URL}/api/admin/discounts`, { credentials: 'include' });
+            const resD = await authFetch(`${API_URL}/api/admin/discounts`);
             if (resD.ok) {
                 const data = await resD.json();
                 setDiscounts(data || []);
             }
 
             // Pre-load Categories and Products for the drawer
-            const resC = await fetch(`${API_URL}/api/admin/categories`, { credentials: 'include' });
+            const resC = await authFetch(`${API_URL}/api/admin/categories`);
             if (resC.ok) {
                 const cData = await resC.json();
                 setDbCategories(cData.data || cData || []);
             }
 
-            const resP = await fetch(`${API_URL}/api/admin/products`, { credentials: 'include' });
+            const resP = await authFetch(`${API_URL}/api/admin/products`);
             if (resP.ok) {
                 const pData = await resP.json();
                 setDbProducts(pData.products || pData.data || pData || []);
@@ -528,8 +529,7 @@ function DiscountsView({ toast }: { toast: any }) {
 
         try {
             const url = isNew ? `${API_URL}/api/admin/discounts` : `${API_URL}/api/admin/discounts/${savedDiscount.id}`;
-            const res = await fetch(url, {
-        credentials: 'include',
+            const res = await authFetch(url, {
                 method: isNew ? 'POST' : 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(savedDiscount)
@@ -553,8 +553,7 @@ function DiscountsView({ toast }: { toast: any }) {
         setSyncStatus('syncing');
 
         try {
-            const res = await fetch(`${API_URL}/api/admin/discounts`, {
-        credentials: 'include',
+            const res = await authFetch(`${API_URL}/api/admin/discounts`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: targetId })
@@ -575,8 +574,7 @@ function DiscountsView({ toast }: { toast: any }) {
         setSyncStatus('syncing');
 
         try {
-            const res = await fetch(`${API_URL}/api/admin/discounts`, {
-        credentials: 'include',
+            const res = await authFetch(`${API_URL}/api/admin/discounts`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: discount.id, isActive: nextState })

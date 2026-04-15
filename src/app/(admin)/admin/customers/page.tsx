@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { authFetch } from '@/lib/integrationAdapters';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import type { AdminUser } from '@/types';
 
@@ -213,8 +214,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
     const saveEdit = async () => {
         setSaving(true);
         try {
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, ...editForm })
@@ -234,8 +234,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
             const newNote = { id: uid(), text: noteText.trim(), createdBy: currentUser.id, createdByName: currentUser.name, createdAt: new Date().toISOString(), isPinned: false };
             const newNotes = [newNote, ...(customer.notes || [])];
 
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, notes: newNotes })
@@ -253,8 +252,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
     const handleDeleteNote = async (noteId: string) => {
         try {
             const newNotes = customer.notes.filter(n => n.id !== noteId);
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, notes: newNotes })
@@ -267,8 +265,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
     const handlePinNote = async (noteId: string, pinned: boolean) => {
         try {
             const newNotes = customer.notes.map(n => n.id === noteId ? { ...n, isPinned: pinned } : n);
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, notes: newNotes })
@@ -280,8 +277,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
 
     const handleBlock = async () => {
         try {
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, status: 'Blocked', blockReason })
@@ -294,8 +290,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
 
     const handleUnblock = async () => {
         try {
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, status: 'Active' })
@@ -307,8 +302,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
 
     const handleTierChange = async (tier: LoyaltyTier) => {
         try {
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, loyaltyTier: tier })
@@ -322,8 +316,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
         if (customer.tags?.includes(tag)) return;
         try {
             const newTags = [...(customer.tags || []), tag];
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, tags: newTags })
@@ -337,8 +330,7 @@ function CustomerDrawer({ customer: initial, currentUser, onUpdate, onClose }: {
     const handleRemoveTag = async (tag: string) => {
         try {
             const newTags = customer.tags.filter(t => t !== tag);
-            await fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/customers`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: customer.id, tags: newTags })
@@ -962,7 +954,7 @@ function CustomersView({ currentUser, onLogout, toast, toastItems, removeToast }
         if (isRefresh) setRefreshing(true); else setLoading(true);
         try {
             const qs = new URLSearchParams({ search: debSearch, status: filterStatus, tier: filterTier, tag: filterTag, sortBy, page: String(page), pageSize: String(PAGE_SIZE) });
-            const res = await fetch(`${API_URL}/api/admin/customers?${qs}`, { credentials: 'include' });
+            const res = await authFetch(`${API_URL}/api/admin/customers?${qs}`);
 
             if (res.ok) {
                 const json = await res.json();
@@ -984,8 +976,7 @@ function CustomersView({ currentUser, onLogout, toast, toastItems, removeToast }
     // 🔥 API Replaced: Handlers
     const handleDelete = useCallback(async (c: Customer) => {
         try {
-            await fetch(`${API_URL}/api/admin/customers/${c.id}`, {
-        credentials: 'include', method: 'DELETE' });
+            await authFetch(`${API_URL}/api/admin/customers/${c.id}`, { method: 'DELETE' });
 
             setCustomers(prev => prev.filter(cust => cust.id !== c.id));
             toast.success(`${c.firstName} ${c.lastName} deleted.`);
@@ -997,8 +988,7 @@ function CustomersView({ currentUser, onLogout, toast, toastItems, removeToast }
     const handleBulkStatus = useCallback(async (status: CustomerStatus) => {
         try {
             await Promise.all(Array.from(selected).map(id =>
-                fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include', method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) })
+                authFetch(`${API_URL}/api/admin/customers`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) })
             ));
 
             toast.success(`${selected.size} customers set to ${status}.`);
@@ -1012,8 +1002,7 @@ function CustomersView({ currentUser, onLogout, toast, toastItems, removeToast }
             await Promise.all(Array.from(selected).map(id => {
                 const existing = customers.find(c => c.id === id);
                 const newTags = Array.from(new Set([...(existing?.tags || []), tag]));
-                return fetch(`${API_URL}/api/admin/customers`, {
-        credentials: 'include', method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, tags: newTags }) });
+                return authFetch(`${API_URL}/api/admin/customers`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, tags: newTags }) });
             }));
             toast.success(`Tag "${tag}" added to ${selected.size} customers.`);
             setSelected(new Set());
@@ -1025,10 +1014,7 @@ function CustomersView({ currentUser, onLogout, toast, toastItems, removeToast }
         const ids = Array.from(selected);
         const results = await Promise.allSettled(
             ids.map(id =>
-                fetch(`${API_URL}/api/admin/customers/${id}`, {
-                    credentials: 'include',
-                    method: 'DELETE',
-                }).then(res => { if (!res.ok) throw new Error(id); return id; })
+                authFetch(`${API_URL}/api/admin/customers/${id}`, { method: 'DELETE' }).then(res => { if (!res.ok) throw new Error(id); return id; })
             )
         );
         const succeeded = results.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<string>).value);

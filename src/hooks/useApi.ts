@@ -3,6 +3,7 @@
 import { useCart } from '@/context/CartContext';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_URL } from '@/lib/api';
+import { extractList, fetchStorefrontCategories } from '@/lib/integrationAdapters';
 import type {
   HeroData,
   Product,
@@ -128,7 +129,7 @@ export function useProducts(options: UseProductsOptions = {}): AsyncState<Produc
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<ProductsResponse>;
       })
-      .then(data => setProducts(data.products ?? []))
+      .then(data => setProducts(extractList<Product>(data)))
       .catch(err => {
         console.error('useProducts error:', err);
         setError('Failed to load products.');
@@ -224,12 +225,8 @@ export function useCategories(): AsyncState<Category[]> {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/storefront/categories`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<Category[]>;
-      })
-      .then(data => setCategories(Array.isArray(data) ? data : []))
+    fetchStorefrontCategories()
+      .then((data) => setCategories(data as unknown as Category[]))
       .catch(err => {
         console.error('useCategories error:', err);
         setError('Failed to load categories.');

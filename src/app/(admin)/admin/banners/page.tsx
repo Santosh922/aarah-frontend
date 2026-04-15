@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { authFetch, safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
 import { processImageFile } from '@/lib/uploadImage';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
@@ -515,10 +516,11 @@ function StoryVideoSelector({ banners, onSelectionChange }: { banners: Banner[],
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch(`${API_URL}/api/storefront/settings`, { credentials: 'include' })
-            .then(res => res.json())
+        authFetch(`${API_URL}/api/storefront/settings`)
+            .then(res => safeJson<any>(res, {}))
             .then(settings => {
-                setSelectedVideoId(settings.selectedStoryVideoId || null);
+                const data = unwrapApiResponse<any>(settings);
+                setSelectedVideoId(data?.selectedStoryVideoId || null);
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -578,7 +580,7 @@ function BannersView({ toast }: { toast: any }) {
     const fetchBanners = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true); else setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/admin/banners`, { credentials: 'include' });
+            const res = await authFetch(`${API_URL}/api/admin/banners`);
             if (res.ok) {
                 const data = await res.json();
                 // Ensure data is sorted by position then sortOrder
@@ -598,8 +600,7 @@ function BannersView({ toast }: { toast: any }) {
         try {
             const method = data.id ? 'PATCH' : 'POST';
             const url = data.id ? `${API_URL}/api/admin/banners/${data.id}` : `${API_URL}/api/admin/banners`;
-            const res = await fetch(url, {
-        credentials: 'include',
+            const res = await authFetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -615,10 +616,7 @@ function BannersView({ toast }: { toast: any }) {
     const handleDelete = async () => {
         if (!deleteTarget) return;
         try {
-            const res = await fetch(`${API_URL}/api/admin/banners/${deleteTarget.id}`, {
-                credentials: 'include',
-                method: 'DELETE',
-            });
+            const res = await authFetch(`${API_URL}/api/admin/banners/${deleteTarget.id}`, { method: 'DELETE' });
             if (res.ok) {
                 setBanners(p => p.filter(b => b.id !== deleteTarget.id));
                 toast.success('Banner deleted.');
@@ -632,8 +630,7 @@ function BannersView({ toast }: { toast: any }) {
         // Optimistic UI
         setBanners(p => p.map(b => b.id === banner.id ? { ...b, isActive: nextState } : b));
         try {
-            await fetch(`${API_URL}/api/admin/banners`, {
-        credentials: 'include',
+            await authFetch(`${API_URL}/api/admin/banners`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: banner.id, isActive: nextState })
@@ -783,8 +780,7 @@ function BannersView({ toast }: { toast: any }) {
                 <p className="text-white/40 text-[12px] mb-5">Select which uploaded video to display in the story section of your homepage.</p>
                 <StoryVideoSelector banners={banners.filter(b => b.position === 'story_video')} onSelectionChange={(videoId) => {
                     // This will be handled by updating store settings
-                    fetch(`${API_URL}/api/storefront/settings`, {
-                        credentials: 'include',
+                    authFetch(`${API_URL}/api/storefront/settings`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ selectedStoryVideoId: videoId })

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import prisma from '@/lib/prisma';
+import { API_URL } from '@/lib/api';
+import { extractList, extractTotal, fetchStorefrontCategories } from '@/lib/integrationAdapters';
 import CategoryPageClient from './CategoryPageClient';
 import type { Product } from '@/components/ui/ProductCard';
 
@@ -14,10 +15,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   
   try {
-    const category = await prisma.category.findUnique({
-      where: { slug },
-      select: { name: true, description: true, imageUrl: true }
-    });
+    const categories = await fetchStorefrontCategories();
+    const category = (categories as Array<{ id: string; name: string; slug?: string; description?: string }>)
+      .find((c) => c.slug === slug);
 
     if (!category) return { title: 'Collection Not Found — AARAH' };
 
@@ -33,55 +33,20 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function CategoryPage({ params }: PageProps) {
   const { slug } = await params;
 
-  const category = await prisma.category.findUnique({
-    where: { slug },
-    select: { id: true, name: true }
-  });
+  const categories = await fetchStorefrontCategories();
+  const category = (categories as Array<{ id: string; name: string; slug?: string }>)
+    .find((c) => c.slug === slug);
 
   if (!category) notFound();
 
-  const PAGE_SIZE = 12;
+  const productsData = await fetch(
+    `${API_URL}/api/storefront/products?category=${encodeURIComponent(category.id)}&page=1&pageSize=12`,
+    { cache: 'no-store' }
+  ).then(async (res) => (res.ok ? await res.json() : { products: [], total: 0 }))
+    .catch(() => ({ products: [], total: 0 }));
 
-  const [total, rawProducts] = await Promise.all([
-    prisma.product.count({ where: { categoryId: category.id, status: 'Active' } }),
-    prisma.product.findMany({
-      where: { categoryId: category.id, status: 'Active' },
-      take: PAGE_SIZE,
-      orderBy: [{ isBestSeller: 'desc' }, { createdAt: 'desc' }],
-      include: {
-        images: { orderBy: { isPrimary: 'desc' } },
-        variants: true,
-      }
-    })
-  ]);
-
-  const initialProducts: Product[] = rawProducts.map(p => ({
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    price: p.price,
-    mrp: p.mrp,
-    shortDescription: p.shortDescription || '',
-    isBestSeller: p.isBestSeller,
-    isNewArrival: p.isNewArrival,
-    featured: p.featured,
-    fabric: p.fabric || undefined,
-    tags: p.tags || [],
-    categoryId: p.categoryId,
-    images: p.images.map(img => ({
-      id: img.id,
-      url: img.url,
-      alt: img.alt || p.name,
-      isPrimary: img.isPrimary
-    })),
-    variants: p.variants.map(v => ({
-      id: v.id,
-      sku: v.sku,
-      size: v.size,
-      color: v.color ?? undefined,
-      stock: v.stock
-    }))
-  }));
+  const initialProducts: Product[] = extractList<Product>(productsData);
+  const total = extractTotal(productsData);
 
   return (
     <CategoryPageClient

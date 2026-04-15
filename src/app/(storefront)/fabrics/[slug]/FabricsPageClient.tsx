@@ -7,6 +7,8 @@ import { ChevronDown, SlidersHorizontal, ArrowDownUp, X, Check } from 'lucide-re
 import ProductCard from '@/components/ui/ProductCard';
 import ProductGridSkeleton from '@/components/ui/ProductGridSkeleton';
 import { API_URL } from '@/lib/api';
+import { safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Product } from '@/components/ui/ProductCard';
 
 const SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
@@ -53,7 +55,15 @@ function FabricsPageContent({ initialProducts, initialTotal, fabricName }: {
 
     const res = await fetch(`${API_URL}/api/storefront/products?${params}`);
     if (!res.ok) throw new Error('Failed to fetch');
-    return res.json();
+    const payload = await safeJson<any>(res, {});
+    const raw = unwrapApiResponse<any>(payload);
+    const rows = extractProducts(raw);
+    const products = filterActiveProducts(rows).map(toUiProduct);
+    console.log('STORE PRODUCTS:', products);
+    return {
+      products,
+      total: Number(raw?.total ?? raw?.totalElements ?? rows.length ?? 0),
+    };
   }, [fabricName, searchQuery, sortBy, selectedSizes]);
 
   const fetchProducts = useCallback(async () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { getClientAuthHeaders } from '@/lib/integrationAdapters';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import type { AdminUser } from '@/types';
 
@@ -66,7 +67,7 @@ function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: 
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        fetch(`${API_URL}/api/admin/profile?id=${currentUser.id}`, { credentials: 'include' })
+        fetch(`${API_URL}/api/admin/profile`, { headers: getClientAuthHeaders() })
             .then(res => {
                 if (res.status === 401) { window.location.href = '/admin/login'; return null; }
                 if (!res.ok) throw new Error('Failed to load profile');
@@ -80,7 +81,7 @@ function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: 
         setSaving(true);
         try {
             const res = await fetch(`${API_URL}/api/admin/profile`, {
-        credentials: 'include', method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentUser.id, ...form }) });
+        method: 'PATCH', headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ ...form }) });
             if (res.ok) {
                 toast.success('Profile updated.');
                 setTimeout(() => window.location.reload(), 800); // Reload to reflect changes in Header
@@ -94,7 +95,7 @@ function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: 
         setSaving(true);
         try {
             const res = await fetch(`${API_URL}/api/admin/profile/password`, {
-        credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentUser.id, ...pwForm }) });
+        method: 'POST', headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ ...pwForm }) });
             if (res.ok) { toast.success('Password changed.'); setPwForm({ currentPassword: '', newPassword: '' }); } else throw new Error();
         } catch { toast.error('Failed to change password. Check current password.'); }
         setSaving(false);
@@ -143,7 +144,7 @@ function StoreSection({ toast }: { toast: any }) {
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        fetch(`${API_URL}/api/storefront/settings`, { credentials: 'include' })
+        fetch(`${API_URL}/api/admin/settings`, { headers: getClientAuthHeaders() })
             .then(res => res.json())
             .then(data => { 
                 setForm({
@@ -168,8 +169,8 @@ function StoreSection({ toast }: { toast: any }) {
                 phone: form.phone,
                 address: form.address
             };
-            const res = await fetch(`${API_URL}/api/storefront/settings`, {
-        credentials: 'include', method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await fetch(`${API_URL}/api/admin/settings`, {
+        method: 'PATCH', headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) });
             if (res.ok) toast.success('Store details updated.'); else throw new Error();
         } catch { toast.error('Failed to update store.'); }
         setSaving(false);

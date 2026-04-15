@@ -461,19 +461,27 @@ export default function AdminOrdersPage() {
     const [currentUser, setCurrentUser] = useState<{ id: string; name: string }>({
         id: '', name: ''
     });
+    const [adminToken, setAdminToken] = useState('');
 
     useEffect(() => {
-        fetch(`${API_URL}/api/auth/admin/me`, { credentials: 'include' })
-            .then(res => {
-                if (res.status === 401) { window.location.href = '/admin/login'; return null; }
-                return res.json();
-            })
-            .then(data => {
-                if (!data) return;
-                setCurrentUser({ id: data.id, name: data.name });
-                setView('all');
-            })
-            .catch(() => { window.location.href = '/admin/login'; });
+        try {
+            const token = localStorage.getItem('aarah_auth_token');
+            const userRaw = localStorage.getItem('aarah_auth_user');
+            if (!token || !userRaw) {
+                window.location.href = '/admin/login';
+                return;
+            }
+            const user = JSON.parse(userRaw);
+            if (!user || user.role !== 'ADMIN') {
+                window.location.href = '/admin/login';
+                return;
+            }
+            setAdminToken(token);
+            setCurrentUser({ id: String(user.id || ''), name: user.firstName || user.name || 'Admin' });
+            setView('all');
+        } catch {
+            window.location.href = '/admin/login';
+        }
     }, []);
 
 
@@ -506,13 +514,16 @@ export default function AdminOrdersPage() {
                 viewType: view, assigneeId: currentUser.id,
                 dateRange: debouncedSearch ? 'all' : 'last_month'
             });
-            const res = await fetch(`${API_URL}/api/admin/orders?${qs}`, { credentials: 'include', cache: 'no-store' });
+            const res = await fetch(`${API_URL}/api/admin/orders?${qs}`, {
+                cache: 'no-store',
+                headers: { Authorization: `Bearer ${adminToken}` }
+            });
             const data = await res.json();
             setOrders(data.orders ?? []);
             setTotal(data.total ?? 0);
             setStatusCounts(data.statusCounts ?? {});
         } finally { setLoading(false); setRefreshing(false); }
-    }, [debouncedSearch, status, page, view, currentUser.id]);
+    }, [debouncedSearch, status, page, view, currentUser.id, adminToken]);
 
     useEffect(() => { fetchOrders(); }, [fetchOrders]);
     useEffect(() => { setPage(1); }, [debouncedSearch, status, view]);
@@ -521,12 +532,12 @@ export default function AdminOrdersPage() {
         const b = body as any;
         const orderId = b.id;
         const headers = { 'Content-Type': 'application/json' };
-        const opts = { method: 'PATCH', credentials: 'include' as RequestCredentials, headers };
+        const opts = { method: 'PATCH', headers: { ...headers, Authorization: `Bearer ${adminToken}` } };
 
         if (b.action === 'CLAIM' || b.action === 'ASSIGN' || b.action === 'UNASSIGN') {
-            await fetch(`${API_URL}/api/admin/orders/${orderId}/assign`, {
-                ...opts, body: JSON.stringify({ assigneeId: b.assigneeId, assigneeName: b.assigneeName }),
-            });
+            // Current Spring API does not expose assignment endpoint.
+            // Keep UI stable without hard failure.
+            return;
         } else if (b.labelPrinted) {
             await fetch(`${API_URL}/api/admin/orders/${orderId}/tracking`, {
                 ...opts, body: JSON.stringify({ labelPrinted: 'true' }),

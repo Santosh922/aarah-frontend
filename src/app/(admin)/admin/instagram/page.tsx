@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
+import { authFetch } from '@/lib/integrationAdapters';
 import { processImageFile } from '@/lib/uploadImage';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
@@ -57,7 +58,7 @@ export default function AdminInstagramPage() {
   const fetchPosts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/instagram`, { credentials: 'include' });
+      const res = await authFetch(`${API_URL}/api/admin/instagram`);
       const data = await res.json().catch(() => []);
       if (res.ok && Array.isArray(data)) {
         setPosts(data);
@@ -118,8 +119,8 @@ export default function AdminInstagramPage() {
     try {
       const method = editPost ? 'PATCH' : 'POST';
       const body = editPost ? { id: editPost.id, ...form } : form;
-      const res = await fetch(`${API_URL}/api/admin/instagram`, {
-        credentials: 'include', method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await authFetch(`${API_URL}/api/admin/instagram`, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (res.ok) {
         toast.success(`Post ${editPost ? 'updated' : 'added'}.`);
         closeForm();
@@ -132,8 +133,7 @@ export default function AdminInstagramPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const res = await fetch(`${API_URL}/api/admin/instagram/${deleteTarget.id}`, {
-        credentials: 'include', method: 'DELETE' });
+      const res = await authFetch(`${API_URL}/api/admin/instagram/${deleteTarget.id}`, { method: 'DELETE' });
       if (res.ok) { toast.success('Post deleted.'); setPosts(p => p.filter(x => x.id !== deleteTarget.id)); }
       else { toast.error('Failed to delete.'); }
     } catch { toast.error('Failed to delete.'); }
@@ -144,8 +144,8 @@ export default function AdminInstagramPage() {
     const next = !post.isActive;
     setPosts(p => p.map(x => x.id === post.id ? { ...x, isActive: next } : x));
     try {
-      await fetch(`${API_URL}/api/admin/instagram`, {
-        credentials: 'include', method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: post.id, isActive: next }) });
+      await authFetch(`${API_URL}/api/admin/instagram`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: post.id, isActive: next }) });
       toast.success(next ? 'Post visible on storefront.' : 'Post hidden.');
     } catch { setPosts(p => p.map(x => x.id === post.id ? { ...x, isActive: !next } : x)); toast.error('Failed to update.'); }
   };

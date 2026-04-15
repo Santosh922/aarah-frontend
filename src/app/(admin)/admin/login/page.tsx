@@ -3,16 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
-
-function getApiUrl(path: string): string {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${path}`;
-  }
-  return path;
-}
+import { ApiError } from '@/lib/apiClient';
+import { adminLogin } from '@/services/authService';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const { setSession } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,31 +27,29 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
-      const apiUrl = getApiUrl('/api/auth/admin/login');
-      const res = await fetch(apiUrl, {
-        credentials: 'include',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      const data = await adminLogin({ email: email.trim().toLowerCase(), password });
+      if (data.user.role !== 'ADMIN') {
+        throw new Error('Unauthorized role');
+      }
+
+      setSession({
+        token: data.token,
+        user: {
+          customerId: String(data.user.id),
+          name: `${data.user.firstName} ${data.user.lastName}`.trim(),
+          phone: data.user.phoneNumber,
+          email: data.user.email,
+          role: data.user.role,
+          status: data.user.status,
+          phoneVerified: data.user.phoneVerified,
+        },
       });
-
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        throw new Error(`Server Error: ${res.status} ${res.statusText}. Check terminal logs.`);
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || `Authentication failed (Status: ${res.status}).`);
-      }
-
-      localStorage.setItem('aarah_admin_session', 'active');
 
       router.push('/admin/dashboard');
     } catch (err: any) {
-      const msg = err?.detail || err?.message || 'Authentication failed. Please try again.';
-      console.error('[ADMIN_LOGIN_CLIENT_ERROR]', err);
+      const msg = err instanceof ApiError
+        ? err.message
+        : (err?.detail || err?.message || 'Authentication failed. Please try again.');
       setError(msg);
     } finally {
       setIsLoading(false);

@@ -28,6 +28,10 @@ export default function ProductPageClient({
   relatedProducts?: Product[];
   initialCoupons?: Coupon[];
 }) {
+  useEffect(() => {
+    console.log('PDP PRODUCT:', product);
+  }, [product]);
+
   const router = useRouter();
   const { addToCart, favorites, toggleFavorite, cartItems } = useCart();
 

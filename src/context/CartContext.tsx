@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { API_URL } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { authFetch, safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
 import type { Address, CartItem } from '@/types';
 
 interface CartContextType {
@@ -72,9 +73,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     const sync = async () => {
       try {
-        await fetch(`${API_URL}/api/storefront/cart`, {
+        await authFetch(`${API_URL}/api/storefront/cart`, {
           method: 'POST',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items: cartItems }),
         });
@@ -91,14 +91,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated || !currentUser?.customerId) return;
 
     try {
-      const res = await fetch(`${API_URL}/api/storefront/wishlist`, {
-        credentials: 'include'
-      });
+      const res = await authFetch(`${API_URL}/api/storefront/wishlist`);
       if (res.ok) {
-        const data = await res.json();
-        if (data.wishlist) {
+        const payload = await safeJson<any>(res, {});
+        const data = unwrapApiResponse<any>(payload);
+        const wishlist = Array.isArray(data?.wishlist) ? data.wishlist : (Array.isArray(data) ? data.map((w: any) => String(w.productId ?? w.id)) : []);
+        if (wishlist.length > 0) {
           setFavorites(prev => {
-            const merged = Array.from(new Set([...prev, ...data.wishlist]));
+            const merged = Array.from(new Set([...prev, ...wishlist]));
             localStorage.setItem('aarah_favorites', JSON.stringify(merged));
             return merged;
           });
@@ -120,9 +120,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated || !currentUser?.customerId) return;
 
     try {
-      const res = await fetch(`${API_URL}/api/user/addresses`, { credentials: 'include' });
+      const res = await authFetch(`${API_URL}/api/user/addresses`);
       if (res.ok) {
-        const dbAddresses: Address[] = await res.json();
+        const payload = await safeJson<any>(res, {});
+        const extractedAddresses = payload?.data?.addresses ?? payload?.data ?? payload;
+        const dbAddresses: Address[] = Array.isArray(extractedAddresses) ? extractedAddresses : [];
         setAddresses(prev => {
           const localIds = new Set(prev.map(a => a.id));
           const merged = [...prev];
@@ -151,16 +153,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const newId = prev.length > 0 ? Math.max(...prev.map(a => a.id)) + 1 : 1;
       const withId = { ...newAddr, id: newId };
       if (isAuthenticated && currentUser?.customerId) {
-        fetch(`${API_URL}/api/user/addresses`, {
+        authFetch(`${API_URL}/api/user/addresses`, {
           method: 'POST',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newAddr),
         }).then(res => {
-          if (res.ok) return res.json();
+          if (res.ok) return safeJson<any>(res, {});
         })        .then(data => {
-          if (data?.id) {
-            const updated = prev.map(a => a.id === newId ? { ...a, id: data.id } : a);
+          const savedId = data?.data?.id ?? data?.id;
+          if (savedId) {
+            const updated = prev.map(a => a.id === newId ? { ...a, id: savedId } : a);
             setAddresses(updated);
             localStorage.setItem('aarah_addresses', JSON.stringify(updated));
           }
@@ -227,14 +229,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     if (isAuthenticated && currentUser?.customerId) {
       try {
-        const res = await fetch(`${API_URL}/api/storefront/wishlist`, {
+        const res = await authFetch(`${API_URL}/api/storefront/favorites`, {
           method: 'POST',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            customerId: currentUser.customerId,
             productId: sid,
-            action: isFavorited ? 'remove' : 'add'
+            isFavorited: !isFavorited,
           })
         });
         if (!res.ok) throw new Error('Wishlist sync failed');

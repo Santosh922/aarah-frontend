@@ -22,7 +22,7 @@ export interface Product {
   description?: string;
   descriptionHtml?: string;
   tags?: string[];
-  variants?: { id?: string; size: string; color?: string; stock: number }[];
+  variants?: { id?: string; size: string; color?: string; stock: number; sku?: string }[];
   createdAt?: string;
   sizes?: string[];
   isBestSeller?: boolean;
@@ -32,10 +32,11 @@ export interface Product {
   category?: string;
   subcategory?: string;
   stock?: number;
+  status?: string;
   reviews?: { rating: number; comment?: string; userName?: string; createdAt?: string }[];
 }
 
-export type Variant = { id?: string; size: string; color?: string; stock: number };
+export type Variant = { id?: string; size: string; color?: string; stock: number; sku?: string };
 
 interface Props { product: Product; variant?: 'grid' | 'wishlist-panel' }
 

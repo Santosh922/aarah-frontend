@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { API_URL } from '@/lib/api';
 import {
     Search, X, ChevronLeft, ChevronRight, ChevronDown, RefreshCw,
     Plus, Edit3, Trash2, Archive, RotateCcw,
@@ -11,6 +12,7 @@ import {
     Lock, AlertCircle, ShoppingBag, Check, Zap
 } from 'lucide-react';
 import { PERMS } from '@/lib/permissions';
+import { authFetch, safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
 import type { AdminUser } from '@/types';
 
 const ProductFormModal = dynamic(() => import('./ProductFormModal'), {
@@ -48,6 +50,9 @@ interface ProductClientTableProps {
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10).toUpperCase();
+/** Backend ProductSize enum values only (3XL / 4XL are skipped on save). */
+const BACKEND_SIZES = new Set(['XS', 'S', 'M', 'L', 'XL', 'XXL']);
+
 const fmtMoney = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -107,6 +112,137 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
             ))}
         </div>
     );
+}
+
+function mapAdminProductToUi(p: any) {
+    const cat = p?.category;
+    const categoryId = cat?.id != null ? String(cat.id) : '';
+    const status = String(p?.status ?? (p?.isActive ? 'Active' : 'Draft'));
+    const variants = Array.isArray(p?.variants) ? p.variants : [];
+    const totalStock = Number.isFinite(Number(p?.totalStock))
+        ? Number(p.totalStock)
+        : variants.reduce((sum: number, v: any) => sum + (Number(v?.stock) || 0), 0);
+    return {
+        id: String(p.id ?? ''),
+        name: p.name ?? '',
+        slug: p.slug ?? '',
+        description: p.description ?? '',
+        shortDescription: p.shortDescription ?? '',
+        sku: p.sku ?? '',
+        barcode: p.barcode ?? '',
+        categoryId,
+        tags: typeof p.tags === 'string' ? p.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+        images: Array.isArray(p.images) ? p.images.map((im: any, i: number) => ({
+            id: String(im.id ?? i),
+            url: im.imageUrl ?? im.url ?? '',
+            alt: im.alt ?? '',
+            isPrimary: Boolean(im.isPrimary),
+            order: Number(im.displayOrder ?? im.order ?? i),
+        })) : [],
+        mrp: Number(p.mrp ?? 0),
+        price: Number(p.price ?? 0),
+        costPrice: Number(p.costPrice ?? 0),
+        gstPercent: Number(p.gstPercent ?? 5),
+        hsnCode: p.hsnCode ?? '',
+        status: (status === 'Archived' ? 'Archived' : status === 'Active' ? 'Active' : 'Draft') as ProductStatus,
+        variants: variants.map((v: any, idx: number) => ({
+            id: String(v.id ?? idx),
+            sku: v.sku ?? '',
+            size: String(v.size ?? ''),
+            color: v.color ?? '',
+            colorHex: v.colorHex ?? '#6b7280',
+            stock: Number(v.stock ?? 0),
+        })) as Variant[],
+        totalStock,
+        fabric: p.fabric ?? '',
+        seo: {
+            title: p?.seo?.title ?? '',
+            description: p?.seo?.description ?? '',
+            keywords: p?.seo?.keywords ?? '',
+            slug: p?.seo?.slug ?? p.slug ?? '',
+        },
+        featured: Boolean(p.featured ?? p.bestSeller ?? p.isBestSeller),
+        createdAt: p.createdAt ?? new Date().toISOString(),
+        updatedAt: p.updatedAt ?? new Date().toISOString(),
+        createdBy: '',
+    };
+}
+
+function applyProductListFilters(
+    rows: Product[],
+    search: string,
+    filterStatus: string,
+    filterCat: string,
+    filterFabric: string,
+    filterStock: string,
+    sortBy: string,
+): Product[] {
+    let out = rows;
+    const q = search.trim().toLowerCase();
+    if (q) {
+        out = out.filter(p =>
+            p.name.toLowerCase().includes(q) ||
+            (p.sku && p.sku.toLowerCase().includes(q)) ||
+            (p.tags || []).some((t: string) => t.toLowerCase().includes(q)),
+        );
+    }
+    if (filterStatus !== 'All') out = out.filter(p => p.status === filterStatus);
+    if (filterCat !== 'All') out = out.filter(p => p.categoryId === filterCat);
+    if (filterFabric !== 'All') out = out.filter(p => p.fabric === filterFabric);
+    if (filterStock !== 'All') {
+        out = out.filter(p => {
+            const lvl = getStockLevel(p.totalStock);
+            return lvl === filterStock;
+        });
+    }
+    const sorted = [...out];
+    switch (sortBy) {
+        case 'oldest':
+            sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            break;
+        case 'name_az':
+            sorted.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+        case 'price_hi':
+            sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
+            break;
+        case 'price_lo':
+            sorted.sort((a, b) => (a.price || 0) - (b.price || 0));
+            break;
+        case 'stock_hi':
+            sorted.sort((a, b) => (b.totalStock || 0) - (a.totalStock || 0));
+            break;
+        default:
+            sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    return sorted;
+}
+
+function computeStatusCounts(rows: Product[]): Record<string, number> {
+    const active = rows.filter(p => p.status === 'Active').length;
+    const draft = rows.filter(p => p.status === 'Draft').length;
+    const archived = rows.filter(p => p.status === 'Archived').length;
+    return { All: rows.length, Active: active, Draft: draft, Archived: archived };
+}
+
+async function readErrorMessage(res: Response, body: unknown): Promise<string> {
+    const b = body as Record<string, unknown>;
+    if (typeof b?.message === 'string') return b.message;
+    if (typeof b?.error === 'string') return b.error;
+    if (Array.isArray(b?.errors) && b.errors.length) {
+        const first = b.errors[0] as Record<string, unknown>;
+        if (typeof first?.defaultMessage === 'string') return first.defaultMessage as string;
+    }
+    const fieldErrors = b?.errors;
+    if (fieldErrors && typeof fieldErrors === 'object' && !Array.isArray(fieldErrors)) {
+        const firstKey = Object.keys(fieldErrors as object)[0];
+        if (firstKey) {
+            const val = (fieldErrors as Record<string, unknown>)[firstKey];
+            if (Array.isArray(val) && val.length) return String(val[0]);
+            if (typeof val === 'string') return val;
+        }
+    }
+    return `Request failed (${res.status})`;
 }
 
 function useToast() {
@@ -197,59 +333,128 @@ export default function ProductClientTable({ initialProducts, initialCategories,
         return () => clearTimeout(searchTimer.current);
     }, [search]);
 
-    useEffect(() => {
-        setLoading(false);
-    }, []);
+    const fetchCategories = useCallback(async () => {
+        try {
+            const res = await authFetch(`${API_URL}/api/admin/categories`);
+            const payload = await safeJson<any>(res, {});
+            const rawCategories = payload?.data ?? payload;
+            console.log('Categories:', rawCategories);
+            const categories = Array.isArray(rawCategories)
+                ? rawCategories.map((cat: any) => ({
+                      id: String(cat.id),
+                      name: cat.name,
+                  }))
+                : [];
+            setCategories(res.ok ? categories : []);
+        } catch {
+            toast.error('Failed to load categories.');
+            setCategories([]);
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps -- toast not listed to avoid render loops
 
     const fetchProducts = useCallback(async (isRefresh = false) => {
-        if (isRefresh) setRefreshing(true); else setLoading(true);
+        if (isRefresh) setRefreshing(true);
+        else setLoading(true);
         try {
-            const qs = new URLSearchParams({
-                search: debouncedSearch,
-                status: filterStatus,
-                categoryId: filterCat,
-                stockLevel: filterStock,
-                fabric: filterFabric,
+            const res = await authFetch(`${API_URL}/api/admin/products`);
+            const payload = await safeJson<any>(res, {});
+            const rawProducts = unwrapApiResponse<any>(payload);
+            const list = Array.isArray(rawProducts) ? rawProducts : [];
+            if (!res.ok) {
+                toast.error('Failed to load products.');
+                setProducts([]);
+                setTotal(0);
+                setStatusCounts({ All: 0, Active: 0, Draft: 0, Archived: 0 });
+                return;
+            }
+            const mapped: Product[] = list.map(mapAdminProductToUi);
+            console.log('Mapped product:', mapped[0] ?? null);
+            const filtered = applyProductListFilters(
+                mapped,
+                debouncedSearch,
+                filterStatus,
+                filterCat,
+                filterFabric,
+                filterStock,
                 sortBy,
-                page: String(page),
-                pageSize: String(PAGE_SIZE),
-            });
-            const res = await fetch(`/api/admin/products?${qs}`, { credentials: 'include' });
-            const data = await res.json();
-            setProducts(data.products || []);
-            setTotal(data.total || 0);
-            setStatusCounts(data.statusCounts || {});
+            );
+            setStatusCounts(computeStatusCounts(mapped));
+            setTotal(filtered.length);
+            const start = (page - 1) * PAGE_SIZE;
+            setProducts(filtered.slice(start, start + PAGE_SIZE));
         } catch {
             toast.error('Failed to load products.');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [debouncedSearch, filterStatus, filterCat, filterStock, filterFabric, sortBy, page, PAGE_SIZE]);
+    }, [debouncedSearch, filterStatus, filterCat, filterStock, filterFabric, sortBy, page, PAGE_SIZE]); // eslint-disable-line react-hooks/exhaustive-deps -- toast not listed to avoid render loops
 
-    useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterCat, filterStock, filterFabric, sortBy]);
+    useEffect(() => {
+        fetchCategories();
+    }, [fetchCategories]);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [debouncedSearch, filterStatus, filterCat, filterStock, filterFabric, sortBy]);
 
     const handleSave = async (data: any, id?: string) => {
+        const catRaw = data.categoryId;
+        const categoryIdNum =
+            catRaw === '' || catRaw === undefined || catRaw === null ? NaN : Number(catRaw);
+        if (!Number.isFinite(categoryIdNum) || categoryIdNum <= 0) {
+            toast.error('Please select a category.');
+            return;
+        }
+
+        const name = String(data.name || '').trim();
+        if (!name) {
+            toast.error('Product name is required.');
+            return;
+        }
+
+        const payload = {
+            ...data,
+            name,
+            categoryId: categoryIdNum,
+            variants: Array.isArray(data.variants) ? data.variants : [],
+            images: Array.isArray(data.images) ? data.images : [],
+            tags: Array.isArray(data.tags) ? data.tags : [],
+            seo: data.seo ?? { title: '', description: '', keywords: '', slug: '' },
+            totalStock: (Array.isArray(data.variants) ? data.variants : []).reduce(
+                (sum: number, v: any) => sum + (Number(v?.stock) || 0),
+                0,
+            ),
+        };
+
+        console.log('FINAL PRODUCT PAYLOAD:', payload);
+
         try {
-            const res = await fetch(id ? `/api/admin/products/${id}` : '/api/admin/products', {
-                credentials: 'include',
+            const res = await authFetch(id ? `${API_URL}/api/admin/products` : `${API_URL}/api/admin/products`, {
                 method: id ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
+                body: JSON.stringify(id ? { id: Number(id), ...payload } : payload),
             });
-            if (!res.ok) throw new Error((await res.json()).error || 'Failed to save');
+            const body = await safeJson<any>(res, {});
+            if (!res.ok) {
+                throw new Error(await readErrorMessage(res, body));
+            }
             toast.success(`Product ${id ? 'updated' : 'created'} successfully.`);
             setDrawer(null);
             fetchProducts(true);
         } catch (err: any) {
-            toast.error(err.message || 'Failed to save product.');
+            toast.error(err?.message || 'Failed to save product.');
         }
     };
 
     const handleDelete = async (id: string) => {
         setDeleteConfirm(null);
         try {
-            const res = await fetch(`/api/admin/products/${id}`, { credentials: 'include', method: 'DELETE' });
+            const res = await authFetch(`${API_URL}/api/admin/products/${id}`, { method: 'DELETE' });
             if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete');
             toast.success('Product deleted.');
             fetchProducts(true);
@@ -261,11 +466,13 @@ export default function ProductClientTable({ initialProducts, initialCategories,
     const handleBulkStatus = async (status: ProductStatus) => {
         try {
             await Promise.all(Array.from(selected).map(async id => {
-                const res = await fetch(`/api/admin/products/${id}`, {
-                    credentials: 'include',
+                const res = await authFetch(`${API_URL}/api/admin/products`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status }),
+                    body: JSON.stringify({
+                        id: Number(id),
+                        isActive: status === 'Active',
+                    }),
                 });
                 if (!res.ok) throw new Error();
             }));
@@ -281,7 +488,7 @@ export default function ProductClientTable({ initialProducts, initialCategories,
         const ids = Array.from(selected);
         const results = await Promise.allSettled(
             ids.map(id =>
-                fetch(`/api/admin/products/${id}`, { credentials: 'include', method: 'DELETE' })
+                authFetch(`${API_URL}/api/admin/products/${id}`, { method: 'DELETE' })
                     .then(res => { if (!res.ok) throw new Error(id); return id; })
             )
         );

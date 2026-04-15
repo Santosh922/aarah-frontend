@@ -11,6 +11,7 @@ import LoginModal from '@/components/modals/LoginModal';
 import CartDrawer from '@/components/modals/CartDrawer';
 
 import { API_URL } from '@/lib/api';
+import { extractList, fetchStorefrontCategories } from '@/lib/integrationAdapters';
 import type { Product } from '../ui/ProductCard';
 
 const TOP_NAV = [
@@ -51,17 +52,14 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/storefront/categories`)
-      .then(r => r.json())
-      .then((data: { name: string; slug: string }[]) => {
-        if (Array.isArray(data)) {
-          setCategoryDropdown(
-            data.map(c => ({
-              name: c.name,
-              href: `/shop/${c.slug}`,
-            }))
-          );
-        }
+    fetchStorefrontCategories()
+      .then((data) => {
+        setCategoryDropdown(
+          data.map(c => ({
+            name: c.name,
+            href: `/shop/${c.slug}`,
+          }))
+        );
       })
       .catch(() => {});
   }, []);
@@ -83,14 +81,14 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
       // Empty query — show featured products as suggestions
       fetch(`${API_URL}/api/storefront/products?featured=true&pageSize=4`)
         .then(r => r.json())
-        .then(data => setSearchResults(data.products || []))
+        .then(data => setSearchResults(extractList<Product>(data)))
         .catch(() => setSearchResults([]));
       return;
     }
     setIsSearching(true);
     fetch(`${API_URL}/api/storefront/products?search=${encodeURIComponent(q)}&pageSize=8`)
       .then(r => r.json())
-      .then(data => setSearchResults(data.products || []))
+      .then(data => setSearchResults(extractList<Product>(data)))
       .catch(() => setSearchResults([]))
       .finally(() => setIsSearching(false));
   }, []);
@@ -121,7 +119,7 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
 
   const handleAccountClick = () => {
     if (authState === 'authenticated') {
-      router.push('/account');
+      router.push(currentUser?.role === 'ADMIN' ? '/admin' : '/account');
     } else if (authState === 'guest') {
       setIsAuthOpen(true);
     }
@@ -217,7 +215,7 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
                   <User className="w-5 h-5" strokeWidth={1.5} />
                 </button>
                 <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-100 shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                  <Link href="/account" className="block px-4 py-3 text-[11px] font-sans text-gray-700 hover:bg-gray-50 uppercase tracking-widest border-b border-gray-50">
+                  <Link href={currentUser?.role === 'ADMIN' ? '/admin' : '/account'} className="block px-4 py-3 text-[11px] font-sans text-gray-700 hover:bg-gray-50 uppercase tracking-widest border-b border-gray-50">
                     My Account
                   </Link>
                   <button onClick={handleLogout} className="w-full text-left px-4 py-3 text-[11px] font-sans text-semantic-error hover:bg-red-50 uppercase tracking-widest flex items-center gap-2">
@@ -344,7 +342,7 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
           <div className="p-6 border-t border-gray-100 bg-[#FAFAFA]">
             {authState === 'authenticated' ? (
               <div className="flex gap-3">
-                <Link href="/account" onClick={closeAllMenus}
+                <Link href={currentUser?.role === 'ADMIN' ? '/admin' : '/account'} onClick={closeAllMenus}
                   className="flex-1 flex items-center justify-center space-x-2 bg-[#191919] text-white py-4 font-sans text-[11px] font-bold tracking-[0.2em] uppercase shadow-sm">
                   <User className="w-4 h-4" /><span>My Account</span>
                 </Link>
@@ -428,7 +426,7 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
       <LoginModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
-        onSuccess={() => { setIsAuthOpen(false); router.push('/account'); }}
+        onSuccess={() => { setIsAuthOpen(false); }}
       />
 
       <CartDrawer

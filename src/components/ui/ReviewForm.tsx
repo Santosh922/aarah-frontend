@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Star, Send, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { API_URL } from '@/lib/api';
+import { getClientAuthHeaders } from '@/lib/integrationAdapters';
 
 interface ReviewFormProps {
   productId: string;
@@ -91,15 +93,13 @@ export default function ReviewForm({ productId, onReviewSubmitted }: ReviewFormP
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/storefront/reviews', {
+      const res = await fetch(`${API_URL}/api/user/reviews`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          productId,
+          productId: Number(productId),
           rating,
-          content: content.trim(),
-          reviewerName: reviewerName.trim(),
-          reviewerEmail: reviewerEmail.trim() || null,
+          comment: content.trim(),
         }),
       });
 

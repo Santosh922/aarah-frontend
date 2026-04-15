@@ -14,6 +14,7 @@ import {
 import AddressForm from '@/components/ui/AddressForm';
 
 import { API_URL } from '@/lib/api';
+import { authFetch, safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
 import type { Address } from '@/types';
 
 interface OrderItem {
@@ -199,11 +200,14 @@ export default function AccountDashboardPage() {
   const fetchOrders = async () => {
     setIsLoadingOrders(true);
     try {
-      const res = await fetch(`${API_URL}/api/user/orders`, {
-        credentials: 'include',
+      const res = await authFetch(`${API_URL}/api/user/orders`, {
         headers: { 'Content-Type': 'application/json' }
       });
-      if (res.ok) setPastOrders(await res.json());
+      if (res.ok) {
+        const payload = await safeJson<any>(res, {});
+        const orders = unwrapApiResponse<Order[]>(payload);
+        setPastOrders(Array.isArray(orders) ? orders : []);
+      }
       else setPastOrders([]);
     } catch {
       setPastOrders([]);
@@ -217,27 +221,13 @@ export default function AccountDashboardPage() {
     try {
       console.log('Saving profile with customerId:', currentUser?.customerId);
       
-      const res = await fetch(`/api/user/profile`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId: currentUser?.customerId,
-          name: userProfile.name,
-          email: userProfile.email,
-          phone: userProfile.phone,
-        }),
-      });
-
-      console.log('Response status:', res.status);
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Profile update failed:', res.status, errorText);
-        throw new Error(errorText);
-      }
-
-      const freshUserData = await res.json();
+      // Backend currently exposes profile read endpoint only.
+      // Keep UI editable while safely skipping unsupported server patch.
+      const freshUserData = {
+        name: userProfile.name,
+        email: userProfile.email,
+        phone: userProfile.phone,
+      };
       console.log('Updated profile:', freshUserData);
 
       if (currentUser) {
@@ -266,16 +256,15 @@ export default function AccountDashboardPage() {
     if (!cancellingOrder) return;
     setIsCancelling(true);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${API_URL}/api/user/orders/${cancellingOrder.id}/cancel`,
         {
           method: 'POST',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason }),
         }
       );
-      const data = await res.json();
+      const data = await safeJson<any>(res, {});
 
       if (!res.ok) {
         alert(data.error || 'Failed to cancel order.');

@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronRight, ShieldCheck, CreditCard, Smartphone, Building2, Lock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { API_URL } from '@/lib/api';
+import { getClientAuthHeaders } from '@/lib/integrationAdapters';
 import type { Address, CartItem, Coupon } from '@/types';
 
 const RZP_KEY  = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
@@ -153,7 +154,7 @@ function PaymentContent() {
       // Step 1: Create Razorpay order on backend
       const createRes = await fetch(`${API_URL}/api/payment/create-order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
         clientAmount: finalTotal,
         items: paymentItems.map(i => ({ id: i.id, quantity: i.quantity, variantId: i.variantId })),
@@ -275,8 +276,7 @@ function PaymentContent() {
 
     const res = await fetch(`${API_URL}/api/orders`, {
       method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(orderPayload),
     });
 

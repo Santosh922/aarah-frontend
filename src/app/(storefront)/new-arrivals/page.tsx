@@ -1,6 +1,6 @@
 import { API_URL } from '@/lib/api';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Metadata } from 'next';
-import prisma from '@/lib/prisma';
 import ProductListingClient from '@/components/sections/ProductListingClient';
 import type { Product } from '@/components/ui/ProductCard';
 import { Sparkles } from 'lucide-react';
@@ -28,15 +28,20 @@ async function getPageData() {
         return res.ok ? res.json() : { products: [] as Product[], total: 0 };
       } catch { return { products: [] as Product[], total: 0 }; }
     })(),
-    prisma.banner.findFirst({
-      where: { isActive: true, position: 'new_arrivals' },
-      select: { imageUrl: true, title: true, subtitle: true, buttonText: true, buttonLink: true },
-    }).catch(() => null),
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/storefront/banners?position=new_arrivals`, { cache: 'no-store' });
+        const banners = res.ok ? await res.json() : [];
+        return banners[0] ?? null;
+      } catch {
+        return null;
+      }
+    })(),
   ]);
 
   return {
-    products: productsData.products as Product[],
-    total: productsData.total as number,
+    products: filterActiveProducts(extractProducts(productsData)).map(toUiProduct) as Product[],
+    total: filterActiveProducts(extractProducts(productsData)).length,
     banner: banner as ListingBanner | null,
   };
 }

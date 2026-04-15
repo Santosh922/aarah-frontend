@@ -10,7 +10,8 @@ import {
   Bell, X, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 
-import { API_URL } from '@/lib/api';
+import { apiRequest } from '@/lib/apiClient';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 const NAV = [
   { label: 'Dashboard',  href: '/admin/dashboard',  icon: LayoutDashboard },
@@ -61,6 +62,7 @@ function typeIcon(type: string) {
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router   = useRouter();
+  const { currentUser, isMounted, handleLogout } = useAdminAuth();
 
   const [name, setName]         = useState('Admin');
   const [collapsed, setCollapsed] = useState(false);
@@ -73,22 +75,16 @@ export default function AdminSidebar() {
   const bellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/auth/admin/me`, { credentials: 'include' })
-      .then(res => {
-        if (res.status === 401) { router.push('/admin/login'); return null; }
-        return res.json();
-      })
-      .then(data => {
-        if (!data) return;
-        setName(data.name || 'Admin');
-      })
-      .catch(() => router.push('/admin/login'));
-  }, [router]);
+    if (!isMounted) return;
+    if (!currentUser) return;
+    setName(currentUser.name || 'Admin');
+  }, [currentUser, isMounted]);
 
   // ── Poll notifications every 30s ─────────────────────────────────────────
   const fetchNotifications = () => {
-    fetch(`${API_URL}/api/admin/notifications?limit=15`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
+    apiRequest<{ notifications: AdminNotification[]; unreadCount: number }>('/api/admin/notifications?limit=15', {
+      auth: true,
+    })
       .then(data => {
         if (!data) return;
         setNotifications(data.notifications || []);
@@ -115,21 +111,18 @@ export default function AdminSidebar() {
   }, []);
 
   const handleMarkAllRead = () => {
-    fetch(`${API_URL}/api/admin/notifications/mark-read`, {
-      method: 'POST', credentials: 'include',
+    apiRequest<void>('/api/admin/notifications/mark-read', {
+      method: 'POST',
+      auth: true,
     }).then(() => {
       setUnreadCount(0);
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     }).catch(() => {});
   };
 
-  const handleLogout = async () => {
+  const onLogout = async () => {
     setLoggingOut(true);
-    try {
-      await fetch(`${API_URL}/api/auth/admin/logout`, { method: 'POST', credentials: 'include' });
-    } catch {}
-    localStorage.removeItem('aarah_admin_session');
-    router.push('/admin/login');
+    await handleLogout();
   };
 
   const visible = NAV;
@@ -265,7 +258,7 @@ export default function AdminSidebar() {
             </div>
           )}
         </div>
-        <button onClick={handleLogout} disabled={loggingOut} title={collapsed ? 'Sign Out' : undefined}
+        <button onClick={onLogout} disabled={loggingOut} title={collapsed ? 'Sign Out' : undefined}
           className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl transition-all"
           style={{ color: 'rgba(239,68,68,0.7)' }}>
           <LogOut className="w-4 h-4 flex-shrink-0" />

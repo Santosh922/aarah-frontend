@@ -1,7 +1,7 @@
-import prisma from '@/lib/prisma';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/layout/CartDrawer';
+import { API_URL } from '@/lib/api';
 
 export default async function StorefrontLayout({
   children,
@@ -10,10 +10,8 @@ export default async function StorefrontLayout({
 }) {
   let footerBanner = null;
   try {
-    const banners = await prisma.banner.findMany({
-      where: { position: 'footer_promo', isActive: true },
-      take: 1,
-    });
+    const res = await fetch(`${API_URL}/api/storefront/banners?position=footer_promo`, { cache: 'no-store' });
+    const banners = res.ok ? await res.json() : [];
     if (banners.length > 0) footerBanner = banners[0];
   } catch {}
 

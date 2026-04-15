@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { API_URL } from '@/lib/api';
+import { getClientAuthHeaders } from '@/lib/integrationAdapters';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 interface KPIItem { value: number; prev: number; prefix: string; suffix: string }
@@ -109,7 +110,7 @@ export default function AdminDashboard() {
     setError(null);
     try {
       const res = await fetch(`${API_URL}/api/admin/dashboard`, {
-        credentials: 'include',
+        headers: getClientAuthHeaders(),
       });
 
       if (res.status === 401) { window.location.href = '/admin/login'; return; }

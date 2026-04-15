@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Star, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { API_URL } from '@/lib/api';
+import { extractList } from '@/lib/integrationAdapters';
 
 interface Review {
   id: string;
@@ -59,11 +61,24 @@ export default function ProductReviews({ productId, productName, initialReviews,
 
   const fetchReviews = async () => {
     try {
-      const res = await fetch(`/api/storefront/reviews?productId=${productId}`);
+      const res = await fetch(`${API_URL}/api/storefront/reviews?productId=${productId}`);
       if (res.ok) {
         const data = await res.json();
-        setReviews(data.reviews || []);
-        setStats(data.stats || { average: 0, total: 0, distribution: [] });
+        const rows = extractList<any>(data).map((r) => ({
+          id: String(r.id),
+          rating: Number(r.rating || 0),
+          content: String(r.comment || ''),
+          reviewerName: 'Verified Buyer',
+          createdAt: String(r.createdAt || new Date().toISOString()),
+        }));
+        const total = rows.length;
+        const average = total > 0 ? Number((rows.reduce((sum, r) => sum + r.rating, 0) / total).toFixed(1)) : 0;
+        const distribution = [5, 4, 3, 2, 1].map((rating) => ({
+          rating,
+          count: String(rows.filter((r) => r.rating === rating).length),
+        }));
+        setReviews(rows);
+        setStats({ average, total, distribution });
       }
     } catch (error) {
       console.error('Failed to fetch reviews:', error);

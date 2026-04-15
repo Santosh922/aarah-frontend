@@ -3,6 +3,7 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
 import AdminSidebar from '@/components/admin/AdminSidebar';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AdminLayout({
   children,
@@ -10,8 +11,18 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { token, currentUser, isHydrated } = useAuth();
 
   const isLoginPage = pathname === '/admin/login';
+
+  if (!isLoginPage && isHydrated && (!token || currentUser?.role !== 'ADMIN')) {
+    window.location.href = '/admin/login';
+    return null;
+  }
+
+  if (!isLoginPage && !isHydrated) {
+    return <div className="min-h-screen bg-[#333333]" />;
+  }
 
   if (isLoginPage) {
     return <div className="min-h-screen bg-[#333333]">{children}</div>;

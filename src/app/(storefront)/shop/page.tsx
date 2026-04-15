@@ -7,6 +7,8 @@ import { ChevronDown, ChevronUp, SlidersHorizontal, ArrowDownUp, X, Check } from
 import ProductCard from '@/components/ui/ProductCard';
 import ProductGridSkeleton from '@/components/ui/ProductGridSkeleton';
 import { API_URL } from '@/lib/api';
+import { safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Product } from '@/components/ui/ProductCard';
 
 const SORT_OPTIONS = [
@@ -69,8 +71,12 @@ function ShopContent() {
 
       const res = await fetch(`${API_URL}/api/storefront/products?${params}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      setBaseProducts(data.products || []);
+      const payload = await safeJson<any>(res, {});
+      console.log('SHOP RAW RESPONSE:', payload);
+      const rawProducts = extractProducts(payload);
+      const products = filterActiveProducts(rawProducts).map(toUiProduct);
+      console.log('STORE PRODUCTS:', products);
+      setBaseProducts(products);
     } catch (error) {
       console.error('Shop fetch error:', error);
       setBaseProducts([]);
@@ -116,15 +122,19 @@ function ShopContent() {
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/fabrics`)
-      .then(r => r.ok ? r.json() : [])
-      .then((fabrics: string[]) => {
+      .then(r => r.ok ? safeJson<any>(r, {}) : {})
+      .then((payload: any) => {
+        const data = unwrapApiResponse<any>(payload);
+        const fabrics = Array.isArray(data) ? data : [];
         if (Array.isArray(fabrics) && fabrics.length > 0) setFabricOptions(fabrics);
       })
       .catch(() => {});
 
     fetch(`${API_URL}/api/storefront/sizes`)
-      .then(r => r.ok ? r.json() : [])
-      .then((sizes: string[]) => {
+      .then(r => r.ok ? safeJson<any>(r, {}) : {})
+      .then((payload: any) => {
+        const data = unwrapApiResponse<any>(payload);
+        const sizes = Array.isArray(data) ? data : [];
         if (Array.isArray(sizes) && sizes.length > 0) setSizeOptions(sizes);
       })
       .catch(() => {});

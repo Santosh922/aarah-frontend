@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, ArrowRight, Loader2, MessageCircle, ChevronLeft, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { API_URL } from '@/lib/api';
+import { ApiError } from '@/lib/apiClient';
+import { loginEmail, register, resendRegisterOtp, sendLoginOtp, verifyLoginOtp, verifyRegisterOtp } from '@/services/authService';
 
 type ModalView = 'SIGN_IN' | 'SIGN_UP' | 'PHONE' | 'OTP';
+type OtpMode = 'LOGIN' | 'REGISTER';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -14,7 +16,7 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
-  const { login } = useAuth();
+  const { setSession } = useAuth();
   const [view, setView] = useState<ModalView>('SIGN_IN');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,16 +27,26 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
   const [lastName, setLastName] = useState('');
 
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '']);
+  const [otpMode, setOtpMode] = useState<OtpMode>('LOGIN');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(0);
-  const otpRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+  const otpRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
+  const otpLength = 6;
 
   useEffect(() => {
     if (!isOpen) {
       setTimeout(() => {
         setView('SIGN_IN');
         setEmail(''); setPassword(''); setFirstName(''); setLastName('');
-        setPhone(''); setOtp(['', '', '', '']);
+        setPhone(''); setOtp(['', '', '', '', '', '']);
+        setOtpMode('LOGIN');
         setError(null); setTimer(0);
       }, 300);
     }
@@ -47,15 +59,10 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
   }, [timer, view]);
 
   const handleSuccess = (data: any, fallbackPhone?: string) => {
-    const userProfile = {
-      name: data.user.name || 'Aarah User',
-      phone: data.user.phone || fallbackPhone || '',
-      email: data.user.email || '',
-      customerId: data.user.customerId || data.user.id,
-    };
-    login(userProfile);
+    const role = data?.user?.role || 'USER';
     onSuccess?.();
     onClose();
+    window.location.href = role === 'ADMIN' ? '/admin' : '/account';
   };
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
@@ -63,15 +70,26 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
     setError(null);
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const data = await loginEmail({ email, password });
+      setSession({
+        token: data.token,
+        user: {
+          name: `${data.user.firstName} ${data.user.lastName}`.trim(),
+          phone: data.user.phoneNumber,
+          email: data.user.email,
+          customerId: String(data.user.id),
+          role: data.user.role,
+          status: data.user.status,
+          phoneVerified: data.user.phoneVerified,
+        },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Invalid credentials');
       handleSuccess(data);
     } catch (err: any) {
-      setError(err.message);
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Invalid credentials');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +103,10 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
       setError('Please enter a valid email address');
       return;
     }
+    if (phone.length !== 10) {
+      setError('Please enter a valid 10-digit phone number');
+      return;
+    }
 
     if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
     if (!/[A-Z]/.test(password)) { setError('Password must contain at least one uppercase letter'); return; }
@@ -93,15 +115,21 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
     if (!/[@$!%*?&#]/.test(password)) { setError('Password must contain at least one special character'); return; }
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName, email, password }),
+      const name = `${firstName} ${lastName}`.trim();
+      await register({
+        name,
+        email,
+        phoneNumber: phone,
+        password,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create account');
-      handleSuccess(data);
+      setOtpMode('REGISTER');
+      setOtp(['', '', '', '', '', '']);
+      setView('OTP');
+      setTimer(30);
+      setTimeout(() => otpRefs[0].current?.focus(), 100);
     } catch (err: any) {
-      setError(err.message);
+      if (err instanceof ApiError) setError(err.message);
+      else setError('Failed to create account');
     } finally {
       setIsLoading(false);
     }
@@ -113,17 +141,15 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
     if (phone.length !== 10) { setError('Enter a valid 10-digit number'); return; }
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/whatsapp/sendotp`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
+      setOtpMode('LOGIN');
+      await sendLoginOtp({ phoneNumber: phone });
+      setOtp(['', '', '', '', '', '']);
       setView('OTP');
       setTimer(30);
       setTimeout(() => otpRefs[0].current?.focus(), 100);
     } catch (err: any) {
-      setError(err.message);
+      if (err instanceof ApiError) setError(err.message);
+      else setError('Failed to send OTP');
     } finally {
       setIsLoading(false);
     }
@@ -132,20 +158,45 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const otpCode = otp.join('');
-    if (otpCode.length !== 4) return;
+    const otpCode = otp.join('').slice(0, otpLength);
+    if (otpCode.length !== otpLength) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/whatsapp/verifyotp`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp: otpCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Invalid OTP');
+      let data: any;
+      if (otpMode === 'REGISTER') {
+        data = await verifyRegisterOtp({ phoneNumber: phone, otp: otpCode });
+        setSession({
+          token: data.token,
+          user: {
+            name: `${data.user.firstName} ${data.user.lastName}`.trim(),
+            phone: data.user.phoneNumber,
+            email: data.user.email,
+            customerId: String(data.user.id),
+            role: data.user.role,
+            status: data.user.status,
+            phoneVerified: data.user.phoneVerified,
+          },
+        });
+      } else {
+        data = await verifyLoginOtp({ phoneNumber: phone, otp: otpCode });
+        setSession({
+          token: data.token,
+          user: {
+            name: `${data.user.firstName} ${data.user.lastName}`.trim(),
+            phone: data.user.phoneNumber,
+            email: data.user.email,
+            customerId: String(data.user.id),
+            role: data.user.role,
+            status: data.user.status,
+            phoneVerified: data.user.phoneVerified,
+          },
+        });
+      }
       handleSuccess(data, phone);
     } catch (err: any) {
-      setError(err.message);
-      setOtp(['', '', '', '']);
+      if (err instanceof ApiError) setError(err.message);
+      else setError(err.message || 'Invalid OTP');
+      setOtp(['', '', '', '', '', '']);
       otpRefs[0].current?.focus();
     } finally {
       setIsLoading(false);
@@ -157,7 +208,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
     const next = [...otp];
     next[index] = value.slice(-1);
     setOtp(next);
-    if (value && index < 3) otpRefs[index + 1].current?.focus();
+    if (value && index < otpLength - 1) otpRefs[index + 1].current?.focus();
   };
 
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -242,6 +293,14 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
                   </div>
                 </div>
                 <div className="space-y-2 text-left">
+                  <label className="font-sans text-[10px] tracking-[0.15em] text-gray-500 uppercase font-medium">PHONE NUMBER</label>
+                  <div className="flex h-[52px] bg-[#FAFAFA] focus-within:ring-1 focus-within:ring-gray-200 transition-shadow">
+                    <div className="flex items-center justify-center px-4 border-r border-white text-gray-400 text-[12px] font-sans">+91</div>
+                    <input type="tel" maxLength={10} required placeholder="10-DIGIT NUMBER" value={phone} onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError(null); }}
+                      className="flex-1 bg-transparent px-4 outline-none text-[12px] font-sans text-[#191919] tracking-widest placeholder:text-gray-400" />
+                  </div>
+                </div>
+                <div className="space-y-2 text-left">
                   <label className="font-sans text-[10px] tracking-[0.15em] text-gray-500 uppercase font-medium">EMAIL ADDRESS</label>
                   <input type="email" required placeholder="NAME@EXAMPLE.COM" value={email} onChange={e => {setEmail(e.target.value); setError(null);}}
                     className="w-full bg-[#FAFAFA] border-none px-4 py-4 text-[12px] font-sans text-[#191919] tracking-widest outline-none focus:ring-1 focus:ring-gray-200 transition-shadow placeholder:text-gray-400" />
@@ -291,7 +350,9 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
                   {view === 'PHONE' ? 'WHATSAPP LOGIN' : 'VERIFY CODE'}
                 </h2>
                 <p className="font-sans text-[10px] text-gray-500 tracking-[0.15em] uppercase leading-relaxed">
-                  {view === 'PHONE' ? 'FAST, PASSWORDLESS AUTHENTICATION.' : `SENT TO +91 ${phone}`}
+                  {view === 'PHONE'
+                    ? 'FAST, PASSWORDLESS AUTHENTICATION.'
+                    : `${otpMode === 'REGISTER' ? 'VERIFY YOUR REGISTRATION CODE' : 'SENT TO'} +91 ${phone}`}
                 </p>
               </div>
 
@@ -316,7 +377,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
               ) : (
                 <form onSubmit={handleVerifyOtp} className="space-y-6">
                   <div className="flex justify-between gap-3 mb-6">
-                    {otp.map((digit, i) => (
+                    {otp.slice(0, otpLength).map((digit, i) => (
                       <input key={i} ref={otpRefs[i]} type="tel" maxLength={1} value={digit}
                         onChange={e => handleOtpChange(i, e.target.value)} onKeyDown={e => handleOtpKeyDown(i, e)}
                         className={`w-full h-16 text-center text-xl font-sans font-medium bg-[#FAFAFA] border-none transition-shadow outline-none focus:ring-1 focus:ring-gray-200 ${digit ? 'text-[#191919]' : 'text-gray-400'}`} />
@@ -325,7 +386,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
 
                   {error && <p className="text-[10px] text-semantic-error tracking-widest uppercase font-bold text-center">{error}</p>}
 
-                  <button type="submit" disabled={isLoading || otp.join('').length !== 4}
+                  <button type="submit" disabled={isLoading || otp.join('').slice(0, otpLength).length !== otpLength}
                     className="w-full py-4 bg-[#191919] text-white flex items-center justify-center font-sans text-[11px] font-bold tracking-[0.2em] uppercase hover:bg-black transition-colors disabled:opacity-70">
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>VERIFY CODE</span><CheckCircle2 className="w-4 h-4 ml-2" strokeWidth={1.5} /></>}
                   </button>
@@ -336,7 +397,29 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginModalPro
                         <RefreshCw className="w-3 h-3 mr-2 opacity-50" /> RESEND IN 00:{timer < 10 ? `0${timer}` : timer}
                       </span>
                     ) : (
-                      <button type="button" onClick={() => handleSendOtp()} className="font-sans text-[10px] font-bold text-[#191919] tracking-[0.15em] uppercase hover:text-gray-500 transition-colors underline underline-offset-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (otpMode === 'REGISTER') {
+                            setError(null);
+                            setIsLoading(true);
+                            resendRegisterOtp({ phoneNumber: phone })
+                              .then(() => {
+                                setOtp(['', '', '', '', '', '']);
+                                setTimer(30);
+                                setTimeout(() => otpRefs[0].current?.focus(), 100);
+                              })
+                              .catch((err: unknown) => {
+                                if (err instanceof ApiError) setError(err.message);
+                                else setError('Failed to resend OTP');
+                              })
+                              .finally(() => setIsLoading(false));
+                          } else {
+                            handleSendOtp();
+                          }
+                        }}
+                        className="font-sans text-[10px] font-bold text-[#191919] tracking-[0.15em] uppercase hover:text-gray-500 transition-colors underline underline-offset-4"
+                      >
                         RESEND CODE
                       </button>
                     )}

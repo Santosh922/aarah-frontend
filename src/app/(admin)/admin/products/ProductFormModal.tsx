@@ -3,6 +3,7 @@
 import { API_URL } from '@/lib/api';
 import { processImageFile } from '@/lib/uploadImage';
 import { PERMS } from '@/lib/permissions';
+import { authFetch, safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
 
 import {
     useState, useEffect, useCallback, useRef,
@@ -454,7 +455,17 @@ export default function ProductFormModal({ product, mode, categories, currentUse
         setForm(product ? { ...product } : { ...createBlankProduct(categories), createdBy: currentUserId });
         setTab('general');
         setErrors({});
-    }, [product?.id, mode, categories, currentUserId]);
+    }, [product?.id, mode, currentUserId]);
+
+    /** When categories load after open, default category for new product only (avoid wiping edit loads). */
+    useEffect(() => {
+        if (product != null || mode !== 'add') return;
+        setForm(prev => {
+            if (prev.categoryId) return prev;
+            const first = categories[0]?.id;
+            return first ? { ...prev, categoryId: first } : prev;
+        });
+    }, [categories, product, mode]);
 
     const set = useCallback((key: string, val: unknown) => {
         setForm(prev => {
@@ -464,11 +475,73 @@ export default function ProductFormModal({ product, mode, categories, currentUse
         });
     }, []);
 
+    useEffect(() => {
+        if (!product?.id || mode === 'add') return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const [pr, vr] = await Promise.all([
+                    authFetch(`${API_URL}/api/admin/products/${product.id}`),
+                    authFetch(`${API_URL}/api/admin/products/${product.id}/variants`),
+                ]);
+                if (!pr.ok || !vr.ok) return;
+                const prodPayload = await safeJson<any>(pr, {});
+                const variantsPayload = await safeJson<any>(vr, {});
+                const prod = unwrapApiResponse<any>(prodPayload);
+                const variantsRaw = unwrapApiResponse<any>(variantsPayload);
+                if (cancelled || !prod) return;
+                const arr = Array.isArray(variantsRaw) ? variantsRaw : [];
+                const vRows = arr.map((v: any) => {
+                    const colorName = v.color ?? '';
+                    const hex = PRESET_COLORS.find(p => p.name === colorName)?.hex ?? '#6b7280';
+                    return {
+                        id: String(v.id),
+                        sku: '',
+                        size: String(v.size ?? ''),
+                        color: colorName,
+                        colorHex: hex,
+                        stock: Number(v.stock) || 0,
+                    };
+                });
+                const prices = arr.map((v: any) => Number(v.variantPrice)).filter((n: number) => Number.isFinite(n) && n > 0);
+                const minP = prices.length ? Math.min(...prices) : 0;
+                const catId = prod.category?.id != null ? String(prod.category.id) : '';
+                setForm(prev => {
+                    const prevSeo = prev.seo ?? { title: '', description: '', keywords: '', slug: '' };
+                    return {
+                        ...prev,
+                        name: prod.name ?? prev.name,
+                        slug: prod.slug ?? prev.slug,
+                        description: prod.description ?? prev.description,
+                        fabric: prod.fabric ?? prev.fabric,
+                        categoryId: catId || prev.categoryId || '',
+                        featured: Boolean(prod.bestSeller ?? prod.isBestSeller),
+                        status: prod.isActive === true ? 'Active' : 'Draft',
+                        price: minP > 0 ? minP : prev.price,
+                        variants: vRows.length ? vRows : prev.variants,
+                        totalStock: vRows.reduce((s: number, v: { stock: number }) => s + v.stock, 0),
+                        seo: {
+                            title: prevSeo.title,
+                            description: prevSeo.description,
+                            keywords: prevSeo.keywords,
+                            slug: prod.slug ?? prevSeo.slug,
+                        },
+                    };
+                });
+            } catch (err) {
+                console.error('[admin] failed to load product detail', err);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [product?.id, mode]);
+
     const validate = (): boolean => {
         const e: Record<string, string> = {};
         if (!form.name?.trim()) e.name = 'Product name is required';
-        if (!form.sku?.trim()) e.sku = 'SKU is required';
-        if ((form.price ?? 0) <= 0) e.price = 'Price must be greater than 0';
+        const cat = form.categoryId;
+        if (cat === undefined || cat === null || String(cat).trim() === '') {
+            e.categoryId = 'Category is required';
+        }
         setErrors(e);
         return Object.keys(e).length === 0;
     };
@@ -539,7 +612,7 @@ export default function ProductFormModal({ product, mode, categories, currentUse
                             className="flex items-center gap-1.5 pb-3 px-1 mr-6 text-[11px] font-semibold whitespace-nowrap transition-all border-b-2 shrink-0"
                             style={{ color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.3)', borderColor: tab === t.id ? '#fff' : 'transparent' }}>
                             {t.label}
-                            {t.id === 'general' && (errors.name || errors.sku) && <span className="w-1.5 h-1.5 rounded-full bg-red-400 ml-0.5" />}
+                            {t.id === 'general' && (errors.name || errors.categoryId) && <span className="w-1.5 h-1.5 rounded-full bg-red-400 ml-0.5" />}
                             {t.id === 'pricing' && errors.price && <span className="w-1.5 h-1.5 rounded-full bg-red-400 ml-0.5" />}
                         </button>
                     ))}
@@ -579,11 +652,13 @@ export default function ProductFormModal({ product, mode, categories, currentUse
                                     <div className="relative">
                                         <select value={form.categoryId ?? ''} disabled={!canEdit || !PERMS.manageCategories()} onChange={e => set('categoryId', e.target.value)}
                                             className="w-full appearance-none px-4 py-3 rounded-xl text-[12px] text-white outline-none border border-white/[0.09] disabled:opacity-50 disabled:cursor-not-allowed"
-                                            style={{ background: 'rgba(255,255,255,0.05)' }}>
+                                            style={{ background: 'rgba(255,255,255,0.05)', borderColor: errors.categoryId ? '#ef4444' : undefined }}>
+                                            {categories.length === 0 && <option value="">Loading categories…</option>}
                                             {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                                         </select>
                                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
                                     </div>
+                                    {errors.categoryId && <p className="text-red-400 text-[10px] mt-1">{errors.categoryId}</p>}
                                     {!PERMS.manageCategories() && canEdit && <p className="text-white/20 text-[9px] mt-1 flex items-center gap-1"><Lock className="w-2.5 h-2.5" /> </p>}
                                 </div>
                                 <div>
@@ -706,7 +781,12 @@ export default function ProductFormModal({ product, mode, categories, currentUse
                             <div className="pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
                                 <p className="text-white/70 text-[13px] font-semibold mb-1">Variants &amp; Stock</p>
                                 <p className="text-white/30 text-[10px] mb-4">{'Select sizes and colours to build the variant matrix.'}</p>
-                                <VariantMatrix variants={form.variants ?? []} onChange={(v: any) => set('variants', v)} disabled={!canEdit} />
+                                <VariantMatrix
+                                    key={(form.variants ?? []).map((v: Variant) => v.id).join('-') || 'empty'}
+                                    variants={form.variants ?? []}
+                                    onChange={(v: any) => set('variants', v)}
+                                    disabled={!canEdit}
+                                />
                             </div>
                         </>
                     )}

@@ -1,8 +1,9 @@
 import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import prisma from '@/lib/prisma';
 import { API_URL } from '@/lib/api';
+import { unwrapApiResponse } from '@/lib/integrationAdapters';
+import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import ProductPageClient from './ProductPageClient';
 
 export const revalidate = 3600;
@@ -12,38 +13,30 @@ interface PageProps {
 }
 
 const getProductData = cache(async (slug: string) => {
-  const product = await prisma.product.findFirst({
-    where: {
-      status: 'Active',
-      OR: [{ slug }, { id: slug }]
-    },
-    include: {
-      images: { orderBy: { order: 'asc' } },
-      variants: true,
-      reviews: {
-        where: { status: 'APPROVED' },
-        orderBy: { createdAt: 'desc' }
-      }
-    }
-  });
+  const detail = await fetch(`${API_URL}/api/storefront/products/${encodeURIComponent(slug)}`, { cache: 'no-store' })
+    .then(async (res) => (res.ok ? await res.json() : null))
+    .catch(() => null);
 
-  const relatedProducts = product
-    ? await prisma.product.findMany({
-        where: {
-          status: 'Active',
-          id: { not: product.id },
-          OR: [
-            { categoryId: product.categoryId },
-            { fabric: product.fabric }
-          ]
-        },
-        take: 8,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          images: { orderBy: { order: 'asc' }, take: 2 },
-          variants: true,
-        }
+  const detailPayload = unwrapApiResponse<any>(detail);
+  const detailBase = detailPayload?.product ?? detailPayload;
+  const detailVariants = Array.isArray(detailPayload?.variants) ? detailPayload.variants : [];
+  const detailImages = Array.isArray(detailPayload?.images) ? detailPayload.images : [];
+  const product = detailBase
+    ? toUiProduct({
+        ...detailBase,
+        variants: detailVariants.length ? detailVariants : detailBase?.variants,
+        images: detailImages.length ? detailImages : detailBase?.images,
       })
+    : null;
+
+  const relatedProducts = product && product.fabric
+    ? await fetch(`${API_URL}/api/storefront/products?fabric=${encodeURIComponent(product.fabric)}&page=0&pageSize=8`, { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const payload = unwrapApiResponse<any>(await res.json());
+        return filterActiveProducts(extractProducts(payload)).map(toUiProduct);
+      })
+      .catch(() => [])
     : [];
 
   return { product, relatedProducts };
