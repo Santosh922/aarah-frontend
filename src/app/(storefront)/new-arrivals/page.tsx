@@ -1,4 +1,5 @@
 import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition, pickFirstBannerWithImageUrl } from '@/lib/storefrontBanners';
 import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Metadata } from 'next';
 import ProductListingClient from '@/components/sections/ProductListingClient';
@@ -30,9 +31,8 @@ async function getPageData() {
     })(),
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/storefront/banners?position=new_arrivals`, { cache: 'no-store' });
-        const banners = res.ok ? await res.json() : [];
-        return banners[0] ?? null;
+        const list = await fetchStorefrontBannersForPosition('new_arrivals');
+        return pickFirstBannerWithImageUrl(list);
       } catch {
         return null;
       }

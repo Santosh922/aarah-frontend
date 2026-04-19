@@ -1,4 +1,5 @@
 import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition } from '@/lib/storefrontBanners';
 
 export function extractList<T = any>(payload: any): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -74,9 +75,8 @@ export async function fetchStorefrontCategories(): Promise<Array<{ id: string; n
   return Array.from(seen.values());
 }
 
+/** Resolves a story-video banner by id (admin only selects from story_video placements). */
 export async function fetchStorefrontBannerById(id: string | number): Promise<any | null> {
-  const res = await fetch(`${API_URL}/api/storefront/banners`, { cache: 'no-store' });
-  if (!res.ok) return null;
-  const banners = extractList<any>(await res.json());
+  const banners = await fetchStorefrontBannersForPosition('story_video');
   return banners.find((b) => String(b.id) === String(id)) ?? null;
 }

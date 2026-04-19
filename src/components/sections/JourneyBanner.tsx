@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition } from '@/lib/storefrontBanners';
 
 export default function JourneyBanner() {
   const [banner, setBanner] = useState<{
@@ -17,15 +17,17 @@ export default function JourneyBanner() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/storefront/banners?position=journey_banner`)
-      .then(r => r.json())
-      .then((data: any[]) => {
-        if (Array.isArray(data) && data.length > 0 && data[0].imageUrl) {
-          const b = data[0];
+    fetchStorefrontBannersForPosition('journey_banner')
+      .then((list) => {
+        const b = list.find(
+          (row: { imageUrl?: string }) => String(row?.imageUrl ?? '').trim() !== '',
+        );
+        const src = b?.imageUrl != null ? String(b.imageUrl).trim() : '';
+        if (src) {
           setBanner({
             title:     b.title    || banner.title,
             subtitle:  b.subtitle || banner.subtitle,
-            imagePath: b.imageUrl,
+            imagePath: src,
           });
         }
       })

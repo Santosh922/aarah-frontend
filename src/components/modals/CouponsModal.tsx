@@ -6,7 +6,7 @@ import type { Coupon } from '@/types';
 interface CouponsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (coupon: Coupon) => void;
+  onApply: (coupon: Coupon) => void | Promise<void>;
   coupons: Coupon[];
 }
 
@@ -33,7 +33,14 @@ export default function CouponsModal({ isOpen, onClose, onApply, coupons }: Coup
                   <span className="font-sans text-[13px] font-bold tracking-widest uppercase text-[#191919] border border-dashed border-gray-300 px-2 py-1 bg-gray-50">
                     {coupon.code}
                   </span>
-                  <button onClick={() => { onApply(coupon); onClose(); }} className="font-sans text-[10px] font-bold tracking-widest uppercase text-blue-600 hover:text-blue-800 underline underline-offset-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await Promise.resolve(onApply(coupon));
+                      onClose();
+                    }}
+                    className="font-sans text-[10px] font-bold tracking-widest uppercase text-blue-600 hover:text-blue-800 underline underline-offset-2"
+                  >
                     Apply
                   </button>
                 </div>

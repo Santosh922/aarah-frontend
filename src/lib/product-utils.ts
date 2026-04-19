@@ -8,8 +8,12 @@ export function getPrimaryImage(product: Product): string {
 }
 
 export function getAvailableSizes(product: Product): string[] {
+  console.log('VARIANT DEBUG:', product.variants);
   if (product.variants && product.variants.length > 0) {
-    const rawSizes = product.variants.filter(v => v.stock > 0).map(v => v.size);
+    const rawSizes = product.variants
+      .filter(v => Number((v as any).stock ?? (v as any).quantity ?? 0) > 0)
+      .map(v => (v as any).size ?? (v as any).sizeName ?? (v as any).label ?? (v as any).value)
+      .filter(Boolean);
     return Array.from(new Set(rawSizes));
   }
   return Array.from(new Set(product.sizes || []));

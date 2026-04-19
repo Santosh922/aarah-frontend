@@ -97,7 +97,7 @@ function ShopContent() {
 
     if (selectedSizes.length > 0) {
       result = result.filter(p =>
-        p.variants && p.variants.some((v: any) => selectedSizes.includes(v.size) && v.stock > 0)
+        Number(p.stock ?? 0) > 0 && p.variants && p.variants.some((v: any) => selectedSizes.includes(v.size))
       );
     }
 

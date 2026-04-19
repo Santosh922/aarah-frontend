@@ -1,7 +1,7 @@
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/layout/CartDrawer';
-import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition, pickFirstBannerWithImageUrl } from '@/lib/storefrontBanners';
 
 export default async function StorefrontLayout({
   children,
@@ -10,9 +10,8 @@ export default async function StorefrontLayout({
 }) {
   let footerBanner = null;
   try {
-    const res = await fetch(`${API_URL}/api/storefront/banners?position=footer_promo`, { cache: 'no-store' });
-    const banners = res.ok ? await res.json() : [];
-    if (banners.length > 0) footerBanner = banners[0];
+    const list = await fetchStorefrontBannersForPosition('footer_promo');
+    footerBanner = pickFirstBannerWithImageUrl(list);
   } catch {}
 
   return (

@@ -1,14 +1,11 @@
 import React from 'react';
 import { Heart, Leaf, Scissors, User, ShoppingBag } from 'lucide-react';
-import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition, firstStorefrontBanner } from '@/lib/storefrontBanners';
 
 async function getAboutBanner() {
   try {
-    const res = await fetch(`${API_URL}/api/storefront/banners?position=about_section`, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const banners = await res.json();
-    if (!Array.isArray(banners) || banners.length === 0) return null;
-    return banners[0];
+    const list = await fetchStorefrontBannersForPosition('about_section');
+    return firstStorefrontBanner(list);
   } catch {
     return null;
   }

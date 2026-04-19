@@ -5,6 +5,7 @@ import { Play, Pause } from 'lucide-react';
 import Image from 'next/image';
 import { API_URL } from '@/lib/api';
 import { fetchStorefrontBannerById } from '@/lib/integrationAdapters';
+import { fetchStorefrontBannersForPosition } from '@/lib/storefrontBanners';
 
 // Real brand copy — replace lorem ipsum
 const DEFAULT_STORY = {
@@ -45,16 +46,20 @@ export default function StorySection() {
         if (settings?.selectedStoryVideoId) {
           fetchStorefrontBannerById(settings.selectedStoryVideoId)
             .then((banner) => {
-              if (banner?.videoUrl) setStory(s => ({ ...s, videoUrl: banner.videoUrl }));
+              const url = String(banner?.videoUrl ?? '').trim();
+              if (url) setStory((s) => ({ ...s, videoUrl: url }));
             })
             .catch(e => console.error('Failed to fetch explicit story banner:', e));
         } else {
           // Fallback: Just grab the first active video banner in the story_video position
-          fetch(`${API_URL}/api/storefront/banners?position=story_video`)
-            .then(r => r.json())
-            .then((banners: any[]) => {
-              if (banners && banners.length > 0 && banners[0].videoUrl) {
-                setStory(s => ({ ...s, videoUrl: banners[0].videoUrl }));
+          fetchStorefrontBannersForPosition('story_video')
+            .then((list) => {
+              const withVideo = list.find(
+                (b: { videoUrl?: string }) => String(b?.videoUrl ?? '').trim() !== '',
+              );
+              const url = withVideo?.videoUrl != null ? String(withVideo.videoUrl).trim() : '';
+              if (url) {
+                setStory((s) => ({ ...s, videoUrl: url }));
               }
             })
             .catch(e => console.error('Failed to fetch fallback story banners:', e));

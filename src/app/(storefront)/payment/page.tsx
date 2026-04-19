@@ -9,7 +9,14 @@ import { ChevronRight, ShieldCheck, CreditCard, Smartphone, Building2, Lock, Loa
 import Link from 'next/link';
 import { API_URL } from '@/lib/api';
 import { getClientAuthHeaders } from '@/lib/integrationAdapters';
-import type { Address, CartItem, Coupon } from '@/types';
+import type { Address, CartItem } from '@/types';
+
+function numFromApi(v: unknown): number {
+  if (v == null) return 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 const RZP_KEY  = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
@@ -44,12 +51,12 @@ function PaymentContent() {
   const [orderDismissed, setOrderDismissed] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<Address | null>(null);
 
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string; type: string; value: number; desc?: string;
-  } | null>(null);
+  /** Code label only; amounts match checkout / validate API. */
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string } | null>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
-  const [finalShipping, setFinalShipping]   = useState(99);
-  const [finalTotal, setFinalTotal]         = useState(0);
+  const [freeShippingFromCoupon, setFreeShippingFromCoupon] = useState(false);
+  const [finalShipping, setFinalShipping] = useState(99);
+  const [finalTotal, setFinalTotal] = useState(0);
 
   useEffect(() => {
     const storedAddressId = sessionStorage.getItem('aarah_checkout_address_id');
@@ -73,70 +80,79 @@ function PaymentContent() {
     if (isValidating) return;
     setMounted(true);
 
+    let resolvedItems: CartItem[] = cartItems;
+    let resolvedSubtotal = cartTotal;
+
     if (mode === 'buynow') {
       const buyNow = sessionStorage.getItem('aarah_buy_now');
       if (buyNow) {
-        const items = JSON.parse(buyNow);
-        setPaymentItems(items);
-        setPaymentTotal(items.reduce((s: number, i: any) => s + i.price * i.quantity, 0));
-      } else {
-        setPaymentItems(cartItems);
-        setPaymentTotal(cartTotal);
+        try {
+          resolvedItems = JSON.parse(buyNow);
+          resolvedSubtotal = resolvedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+        } catch {
+          resolvedItems = cartItems;
+          resolvedSubtotal = cartTotal;
+        }
       }
-    } else {
-      setPaymentItems(cartItems);
-      setPaymentTotal(cartTotal);
     }
+
+    setPaymentItems(resolvedItems);
+    setPaymentTotal(resolvedSubtotal);
 
     const checkoutSummaryStr = sessionStorage.getItem('aarah_checkout_summary');
     if (checkoutSummaryStr) {
       try {
         const summary = JSON.parse(checkoutSummaryStr);
-        if (summary.appliedCoupon) setAppliedCoupon(summary.appliedCoupon);
-        if (summary.discountAmount !== undefined) setDiscountAmount(summary.discountAmount);
-        if (summary.shippingFee !== undefined) setFinalShipping(summary.shippingFee);
-        if (summary.finalTotal !== undefined) setFinalTotal(summary.finalTotal);
+        if (summary.appliedCoupon?.code) {
+          setAppliedCoupon({ code: String(summary.appliedCoupon.code) });
+        } else {
+          setAppliedCoupon(null);
+        }
+        if (summary.discountAmount !== undefined) setDiscountAmount(numFromApi(summary.discountAmount));
+        if (summary.shippingFee !== undefined) setFinalShipping(numFromApi(summary.shippingFee));
+        if (summary.finalTotal !== undefined) setFinalTotal(numFromApi(summary.finalTotal));
+        setFreeShippingFromCoupon(Boolean(summary.freeShipping));
       } catch (e) {
-        console.error("Failed to parse checkout summary", e);
+        console.error('Failed to parse checkout summary', e);
       }
     } else {
-      // Fallback if summary is missing but coupon is set in session storage
+      const savedResultStr = sessionStorage.getItem('aarah_coupon_validate_result');
       const savedCoupon = sessionStorage.getItem('aarah_applied_coupon');
-      if (savedCoupon) {
+      if (savedResultStr && savedCoupon) {
         try {
-          const parsed = JSON.parse(savedCoupon);
-          if (parsed?.code) {
-            setAppliedCoupon(parsed);
-            const baseSubtotal = paymentTotal > 0 ? paymentTotal : cartTotal;
-            const baseShipping = baseSubtotal >= 2000 ? 0 : 99;
-            
-            let localPaymentItems = cartItems;
-            if (mode === 'buynow') {
-              const buyNow = sessionStorage.getItem('aarah_buy_now');
-              if (buyNow) localPaymentItems = JSON.parse(buyNow);
-            }
-            
-            const applicableSubtotal = parsed.appliesTo === 'specific_products'
-              ? localPaymentItems.filter((i: any) => parsed.selectedProductIds?.includes(i.id)).reduce((s: number, i: any) => s + i.price * i.quantity, 0)
-              : baseSubtotal;
-
-            let computedDiscount = 0;
-            if (parsed.type === 'PERCENTAGE') computedDiscount = Math.round(applicableSubtotal * (parsed.value / 100));
-            else if (parsed.type === 'FIXED') computedDiscount = Math.min(parsed.value, applicableSubtotal);
-            else if (parsed.type === 'FREE_SHIPPING') computedDiscount = 0;
-            
-            if (computedDiscount > applicableSubtotal) computedDiscount = applicableSubtotal;
-            setDiscountAmount(computedDiscount);
-            setFinalShipping(parsed.type === 'FREE_SHIPPING' ? 0 : baseShipping);
-            setFinalTotal(baseSubtotal - computedDiscount + (parsed.type === 'FREE_SHIPPING' ? 0 : baseShipping));
+          const parsed = JSON.parse(savedCoupon) as { code?: string };
+          const result = JSON.parse(savedResultStr) as {
+            discountAmount?: unknown;
+            freeShipping?: unknown;
+            finalSubtotal?: unknown;
+          };
+          if (parsed?.code && result) {
+            setAppliedCoupon({ code: parsed.code });
+            setDiscountAmount(numFromApi(result.discountAmount));
+            const subAfter = numFromApi(result.finalSubtotal);
+            const freeShip = Boolean(result.freeShipping);
+            setFreeShippingFromCoupon(freeShip);
+            const ship = freeShip ? 0 : (subAfter >= 2000 ? 0 : 99);
+            setFinalShipping(ship);
+            setFinalTotal(subAfter + ship);
           }
         } catch {
           sessionStorage.removeItem('aarah_applied_coupon');
+          sessionStorage.removeItem('aarah_coupon_validate_result');
+          setAppliedCoupon(null);
+          setDiscountAmount(0);
+          setFreeShippingFromCoupon(false);
+          const ship = resolvedSubtotal >= 2000 ? 0 : 99;
+          setFinalShipping(ship);
+          setFinalTotal(resolvedSubtotal + ship);
         }
       } else {
-        const baseShipping = cartTotal >= 2000 ? 0 : 99;
-        setFinalShipping(baseShipping);
-        setFinalTotal(cartTotal + baseShipping);
+        setAppliedCoupon(null);
+        setDiscountAmount(0);
+        setFreeShippingFromCoupon(false);
+        const ship = resolvedSubtotal >= 2000 ? 0 : 99;
+        setFinalShipping(ship);
+        setFinalTotal(resolvedSubtotal + ship);
       }
     }
   }, [mode, cartItems, cartTotal, isValidating]);
@@ -302,6 +318,8 @@ function PaymentContent() {
     // ── FIX: Only clear coupon AFTER order is successfully placed ─────────
     if (mode === 'buynow') sessionStorage.removeItem('aarah_buy_now');
     sessionStorage.removeItem('aarah_applied_coupon');
+    sessionStorage.removeItem('aarah_coupon_validate_result');
+    sessionStorage.removeItem('aarah_checkout_summary');
 
     clearCart();
     router.push('/order-success');
@@ -441,13 +459,14 @@ function PaymentContent() {
                 <span className="text-gray-500">Subtotal</span>
                 <span className="font-bold text-primary-dark">₹{paymentTotal.toLocaleString('en-IN')}</span>
               </div>
-              {appliedCoupon && (discountAmount > 0 || appliedCoupon.type === 'FREE_SHIPPING') && (
+              {appliedCoupon && (discountAmount > 0 || freeShippingFromCoupon) && (
                 <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase">
-                  <span className="text-gray-500">Discount ({appliedCoupon.code})
-                    {appliedCoupon.type === 'FREE_SHIPPING' && ' (FREE SHIPPING)'}
+                  <span className="text-gray-500">
+                    Discount ({appliedCoupon.code})
+                    {freeShippingFromCoupon ? ' (FREE SHIPPING)' : ''}
                   </span>
                   <span className="font-bold text-semantic-success">
-                    {appliedCoupon.type === 'FREE_SHIPPING' ? 'APPLIED' : `-₹${discountAmount.toLocaleString('en-IN')}`}
+                    {discountAmount > 0 ? `-₹${discountAmount.toLocaleString('en-IN')}` : 'APPLIED'}
                   </span>
                 </div>
               )}

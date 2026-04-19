@@ -489,8 +489,9 @@ function DiscountsView({ toast }: { toast: any }) {
             // Load Discounts
             const resD = await authFetch(`${API_URL}/api/admin/discounts`);
             if (resD.ok) {
-                const data = await resD.json();
-                setDiscounts(data || []);
+                const payload = await resD.json();
+                const list = Array.isArray(payload) ? payload : payload?.data ?? [];
+                setDiscounts(Array.isArray(list) ? list : []);
             }
 
             // Pre-load Categories and Products for the drawer
@@ -528,7 +529,7 @@ function DiscountsView({ toast }: { toast: any }) {
         setSyncStatus('syncing');
 
         try {
-            const url = isNew ? `${API_URL}/api/admin/discounts` : `${API_URL}/api/admin/discounts/${savedDiscount.id}`;
+            const url = `${API_URL}/api/admin/discounts`;
             const res = await authFetch(url, {
                 method: isNew ? 'POST' : 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -553,10 +554,8 @@ function DiscountsView({ toast }: { toast: any }) {
         setSyncStatus('syncing');
 
         try {
-            const res = await authFetch(`${API_URL}/api/admin/discounts`, {
+            const res = await authFetch(`${API_URL}/api/admin/discounts?id=${encodeURIComponent(String(targetId))}`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: targetId })
             });
             if (res.ok) {
                 setSyncStatus('synced');

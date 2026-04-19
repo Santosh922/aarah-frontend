@@ -106,12 +106,17 @@ export default function ProductPageClient({
     .reduce((sum: number, item: any) => sum + item.quantity, 0);
 
   const displayImages = safeImages.map(img => img.url);
+  const stock = Number(product.stock ?? 0);
+  const isOutOfStock = stock <= 0;
+  console.log('UI STOCK CHECK:', product.stock);
   const discountPct = product.mrp && product.mrp > product.price
     ? Math.round((1 - product.price / product.mrp) * 100)
     : 0;
     
   const allSizes = Array.from(new Set(product.variants?.map(v => v.size) ?? ['XS', 'S', 'M', 'L', 'XL']));
-  const availableSizes = product.variants?.filter(v => v.stock > 0).map(v => v.size) ?? [];
+  const availableSizes = product.variants
+    ?.filter(v => Number(v.stock ?? 0) > 0)
+    .map(v => v.size) ?? [];
 
   const exchangePolicyText = [
     { icon: <Clock className="w-5 h-5 text-primary-dark" strokeWidth={1.5} />, title: '48-HOUR WINDOW', desc: 'EXCHANGE REQUESTS MUST BE INITIATED WITHIN 48 HOURS (2 DAYS) OF RECEIVING YOUR DELIVERY.' },
@@ -131,7 +136,7 @@ export default function ProductPageClient({
 
   const handleSizeSelect = (size: string) => {
     const variant = product.variants?.find((v: any) => v.size === size);
-    if (variant && variant.stock > 0) {
+    if (!isOutOfStock && variant) {
       setSelectedSize(size);
       setSelectedVariant(variant);
       setSizeErrorMessage(null);
@@ -142,6 +147,11 @@ export default function ProductPageClient({
   };
 
   const handleAddToCart = () => {
+    if (isOutOfStock) {
+      setSizeErrorMessage('This product is currently out of stock.');
+      setTimeout(() => setSizeErrorMessage(null), 3000);
+      return;
+    }
     if (!selectedSize || !selectedVariant) {
       setSizeErrorMessage('Please select a size first.');
       setTimeout(() => setSizeErrorMessage(null), 3000);
@@ -160,6 +170,7 @@ export default function ProductPageClient({
   };
 
   const handleBuyNowClick = () => {
+    if (isOutOfStock) { setSizeErrorMessage('This product is currently out of stock.'); setTimeout(() => setSizeErrorMessage(null), 3000); return; }
     if (!selectedSize) { setSizeErrorMessage('Please select a size first.'); setTimeout(() => setSizeErrorMessage(null), 3000); return; }
     executeBuyNow();
   };
@@ -188,7 +199,17 @@ export default function ProductPageClient({
       const res = await fetch(`${apiUrl}/api/storefront/discounts/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoInput.trim().toUpperCase(), cartTotal: product.price, cartProductIds: [product.id] }),
+        body: JSON.stringify({
+          code: promoInput.trim().toUpperCase(),
+          cartSubtotal: product.price,
+          cartLines: [
+            {
+              productId: Number(product.id),
+              quantity: 1,
+              lineSubtotal: product.price,
+            },
+          ],
+        }),
       });
       const data = await res.json();
       if (data.valid) {

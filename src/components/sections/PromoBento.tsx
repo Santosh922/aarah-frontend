@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition } from '@/lib/storefrontBanners';
 
 interface Banner {
   id: string;
@@ -18,10 +18,11 @@ function useBanners(position: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/storefront/banners?position=${position}`)
-      .then(r => r.json())
-      .then((data: Banner[]) => {
-        setBanners(Array.isArray(data) ? data.filter(b => b.imageUrl) : []);
+    fetchStorefrontBannersForPosition(position)
+      .then((data) => {
+        setBanners(
+          data.filter((b: Banner) => String(b.imageUrl ?? '').trim() !== ''),
+        );
       })
       .catch(() => setBanners([]))
       .finally(() => setLoading(false));

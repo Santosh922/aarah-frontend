@@ -49,6 +49,9 @@ export default function ProductCard({ product, variant = 'grid' }: Props) {
 
   const image = getPrimaryImage(product);
   const availableSizes = getAvailableSizes(product);
+  const stock = Number(product.stock ?? 0);
+  const isOutOfStock = stock <= 0;
+  console.log('UI STOCK CHECK:', product.stock);
   const inWishlist = favorites.includes(String(product.id));
   const isSelectingSize = sizeAction !== null;
 
@@ -72,7 +75,7 @@ export default function ProductCard({ product, variant = 'grid' }: Props) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (availableSizes.length === 0) return;
+    if (isOutOfStock) return;
 
     if (availableSizes.length === 1) {
       executeAdd(availableSizes[0]);
@@ -85,7 +88,7 @@ export default function ProductCard({ product, variant = 'grid' }: Props) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (availableSizes.length === 0) return;
+    if (isOutOfStock) return;
 
     if (availableSizes.length === 1) {
       executeAdd(availableSizes[0], e, true);
@@ -299,7 +302,7 @@ export default function ProductCard({ product, variant = 'grid' }: Props) {
             </div>
           )}
 
-          {availableSizes.length === 0 ? (
+          {isOutOfStock ? (
             <div className="flex-shrink-0 mt-1 px-3 py-2 bg-gray-100 rounded-full">
               <span className="font-sans text-[9px] font-bold tracking-widest uppercase text-gray-400 whitespace-nowrap">Sold Out</span>
             </div>

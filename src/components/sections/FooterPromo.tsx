@@ -1,21 +1,20 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition, pickFirstBannerWithImageUrl } from '@/lib/storefrontBanners';
 
 export default async function FooterPromo() {
   let banner = null;
   try {
-    const res = await fetch(`${API_URL}/api/storefront/banners?position=footer_promo`, { cache: 'no-store' });
-    const banners = res.ok ? await res.json() : [];
-    if (banners.length > 0) banner = banners[0];
+    const list = await fetchStorefrontBannersForPosition('footer_promo');
+    banner = pickFirstBannerWithImageUrl(list);
   } catch {}
 
-  if (!banner) return null;
+  if (!banner?.imageUrl?.trim()) return null;
 
   return (
     <div className="w-full relative overflow-hidden" style={{ aspectRatio: '16/4', maxHeight: '200px' }}>
       <Image
-        src={banner.imageUrl}
+        src={banner.imageUrl.trim()}
         alt={banner.title || 'Footer Promo'}
         fill
         className="object-cover"

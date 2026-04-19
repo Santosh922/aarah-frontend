@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Play, Pause } from 'lucide-react';
-import { API_URL } from '@/lib/api';
-import Image from 'next/image';
+import { fetchStorefrontBannersForPosition } from '@/lib/storefrontBanners';
 
 interface MamaStoryBanner {
   id: string;
@@ -32,11 +31,13 @@ export default function DualFeaturePost() {
   };
 
   useEffect(() => {
-    fetch(`${API_URL}/api/storefront/banners?position=mama_story`)
-      .then(r => r.json())
-      .then((data: MamaStoryBanner[]) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setVideos(data.slice(0, 2));
+    fetchStorefrontBannersForPosition('mama_story')
+      .then((list) => {
+        const withVideo = list.filter(
+          (b: MamaStoryBanner) => String(b?.videoUrl ?? '').trim() !== '',
+        );
+        if (withVideo.length > 0) {
+          setVideos(withVideo.slice(0, 2) as MamaStoryBanner[]);
         }
       })
       .catch(() => {})
@@ -51,19 +52,22 @@ export default function DualFeaturePost() {
     <section className="w-full py-20 bg-primary-light">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-center gap-6 lg:gap-10">
-          {videos.map(video => {
-            const isPlaying = playingIds[video.id] !== false; // default to true
+          {videos.map((video, idx) => {
+            const key = String(video.id ?? idx);
+            const isPlaying = playingIds[key] !== false; // default to true
 
             return (
               <div
-                key={video.id}
+                key={key}
                 className="relative aspect-[9/16] w-full max-w-[280px] sm:max-w-[320px] rounded-2xl group overflow-hidden bg-gray-100 shadow-xl cursor-pointer shrink-0"
-                onClick={() => togglePlay(video.id)}
+                onClick={() => togglePlay(key)}
               >
                 {/* Video Player Only */}
                 <video
-                  ref={el => { videoRefs.current[video.id] = el; }}
-                  src={video.videoUrl}
+                  ref={(el) => {
+                    videoRefs.current[key] = el;
+                  }}
+                  src={String(video.videoUrl ?? '').trim()}
                   autoPlay
                   loop
                   muted

@@ -11,13 +11,13 @@ interface Banner {
   buttonLink?: string | null;
 }
 
-export default function FooterPromoClient({ banner }: { banner: Banner }) {
-  if (!banner) return null;
+export default function FooterPromoClient({ banner }: { banner: Banner | null }) {
+  if (!banner?.imageUrl?.trim()) return null;
 
   return (
     <div className="w-full relative overflow-hidden" style={{ aspectRatio: '16/4', maxHeight: '200px' }}>
       <Image
-        src={banner.imageUrl}
+        src={banner.imageUrl.trim()}
         alt={banner.title || 'Footer Promo'}
         fill
         className="object-cover"

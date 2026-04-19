@@ -577,22 +577,30 @@ function BannersView({ toast }: { toast: any }) {
     const [drawer, setDrawer] = useState<'closed' | 'new' | Banner>('closed');
     const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null);
 
+    const toastRef = useRef(toast);
+    toastRef.current = toast;
+
     const fetchBanners = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true); else setLoading(true);
         try {
             const res = await authFetch(`${API_URL}/api/admin/banners`);
             if (res.ok) {
-                const data = await res.json();
-                // Ensure data is sorted by position then sortOrder
-                const sorted = (data || []).sort((a: Banner, b: Banner) => {
+                const payload = await res.json();
+                const list = unwrapApiResponse<Banner[]>(payload);
+                if (!Array.isArray(list)) {
+                    console.warn('Unexpected banner response:', payload);
+                    setBanners([]);
+                    return;
+                }
+                const sorted = [...list].sort((a: Banner, b: Banner) => {
                     if (a.position === b.position) return a.sortOrder - b.sortOrder;
                     return a.position.localeCompare(b.position);
                 });
                 setBanners(sorted);
             }
-        } catch { toast.error('Failed to load banners.'); }
+        } catch { toastRef.current.error('Failed to load banners.'); }
         finally { setLoading(false); setRefreshing(false); }
-    }, [toast]);
+    }, []);
 
     useEffect(() => { fetchBanners(); }, [fetchBanners]);
 

@@ -4,6 +4,7 @@ import { useCart } from '@/context/CartContext';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_URL } from '@/lib/api';
 import { extractList, fetchStorefrontCategories } from '@/lib/integrationAdapters';
+import { parseStorefrontBannersPayload, sortStorefrontBannersBySortOrder } from '@/lib/storefrontBanners';
 import type {
   HeroData,
   Product,
@@ -38,6 +39,16 @@ export function useWishlist() {
 
 // ─── useHeroContent ───────────────────────────────────────────────────────────
 
+/** Resolve relative backend paths (/uploads/...) against API_URL for next/image. */
+function normalizeBannerImageUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  const u = String(url).trim();
+  if (!u) return '';
+  if (u.startsWith('http')) return u;
+  const path = u.startsWith('/') ? u : `/${u}`;
+  return `${API_URL.replace(/\/$/, '')}${path}`;
+}
+
 const HERO_FALLBACK: HeroData = {
   backgroundImage: '/assets/images/hero-aaraha.jpg',
   heading: 'Made for Motherhood from Maternity to Feeding.',
@@ -53,23 +64,32 @@ export function useHeroContent(): AsyncState<HeroData[]> {
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/banners?position=hero_main`)
-      .then(r => {
+      .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((banners: Array<{
-        imageUrl: string; title?: string; subtitle?: string;
-        buttonText?: string; buttonLink?: string;
-      }>) => {
-        if (banners?.length > 0) {
-          const mappedBanners = banners.map(b => ({
-            backgroundImage: b.imageUrl,
-            heading: b.title || HERO_FALLBACK.heading,
-            subheading: b.subtitle || HERO_FALLBACK.subheading,
-            buttonText: b.buttonText || HERO_FALLBACK.buttonText,
-            buttonLink: b.buttonLink || HERO_FALLBACK.buttonLink,
-          }));
-          setData(mappedBanners);
+      .then(parseStorefrontBannersPayload)
+      .then(sortStorefrontBannersBySortOrder)
+      .then((banners) => {
+        if (banners.length === 0) {
+          setData([HERO_FALLBACK]);
+          return;
+        }
+
+        const mappedBanners: HeroData[] = banners.map((b: any) => ({
+          backgroundImage: normalizeBannerImageUrl(b.imageUrl),
+          heading: b.title ?? HERO_FALLBACK.heading,
+          subheading: b.subtitle ?? HERO_FALLBACK.subheading,
+          buttonText: b.buttonText ?? HERO_FALLBACK.buttonText,
+          buttonLink: b.buttonLink ?? HERO_FALLBACK.buttonLink,
+        }));
+
+        const withImages = mappedBanners.filter(
+          (h) => h.backgroundImage.trim() !== '',
+        );
+
+        if (withImages.length > 0) {
+          setData(withImages);
         } else {
           setData([HERO_FALLBACK]);
         }

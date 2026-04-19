@@ -13,15 +13,27 @@ export function filterActiveProducts(products: any[]): any[] {
 }
 
 export function calculateStock(product: any): number {
-  if (Number.isFinite(Number(product?.totalStock))) {
-    return Number(product.totalStock);
+  const totalStock = Number(product?.totalStock);
+
+  if (!isNaN(totalStock) && totalStock > 0) {
+    return totalStock;
   }
+
   const variants = Array.isArray(product?.variants) ? product.variants : [];
-  return variants.reduce((sum: number, v: any) => sum + (Number(v?.stock) || 0), 0);
+  const variantStock = variants.reduce((sum: number, v: any) => {
+    return sum + Number(v?.stock ?? v?.quantity ?? 0);
+  }, 0);
+
+  return variantStock;
 }
 
 export function toUiProduct(raw: any): Product {
   const stock = calculateStock(raw);
+  console.log('STOCK DEBUG:', {
+    totalStock: raw?.totalStock,
+    variants: raw?.variants,
+    finalStock: stock,
+  });
   const variants = Array.isArray(raw?.variants) ? raw.variants : [];
   const images = Array.isArray(raw?.images)
     ? raw.images.map((img: any, i: number) => ({
@@ -49,7 +61,7 @@ export function toUiProduct(raw: any): Product {
       id: String(v?.id ?? idx),
       size: String(v?.size ?? ''),
       color: v?.color ?? '',
-      stock: Number(v?.stock ?? 0),
+      stock: Number(v?.stock ?? v?.quantity ?? 0),
       sku: v?.sku ?? '',
     })),
     createdAt: raw?.createdAt,

@@ -29,8 +29,9 @@ export default function QuoteBanner() {
         // If there's a selected story video, fetch it from banners
         if (settings?.selectedStoryVideoId) {
           fetchStorefrontBannerById(settings.selectedStoryVideoId)
-            .then(banner => {
-              if (banner?.videoUrl) setStory(s => ({ ...s, videoUrl: banner.videoUrl }));
+            .then((banner) => {
+              const url = String(banner?.videoUrl ?? '').trim();
+              if (url) setStory((s) => ({ ...s, videoUrl: url }));
             })
             .catch(() => {});
         }

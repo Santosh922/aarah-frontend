@@ -2,7 +2,7 @@
 
 import { API_URL } from '@/lib/api';
 import Image from 'next/image';
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Check, Pencil, Ticket, CheckCircle2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -15,6 +15,56 @@ import AddressModal, { AddressData } from '@/components/modals/AddressModal';
 import LoginModal from '@/components/modals/LoginModal';
 import type { Coupon } from '@/types';
 
+/** Matches storefront validate API (`DiscountValidateResponse`). */
+export type CouponValidateResult = {
+  discountAmount: number;
+  freeShipping: boolean;
+  finalSubtotal: number;
+};
+
+function numFromApi(v: unknown): number {
+  if (v == null) return 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const SUBTOTAL_MISMATCH_RUPEES = 1;
+
+/** Single source of truth for cart value (matches order line totals). */
+function computeLineSubtotal(items: { price: number; quantity: number }[]): number {
+  return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+}
+
+/** Stable fingerprint of cart lines for staleness detection (id, qty, unit price). */
+function cartMetaSignature(items: unknown[]): string {
+  if (!items.length) return '[]';
+  const parts = items.map((item: any) => ({
+    id: String(item.id),
+    q: item.quantity,
+    p: item.price,
+  })).sort((a, b) => a.id.localeCompare(b.id, 'en'));
+  return JSON.stringify(parts);
+}
+
+export type CouponValidationMeta = {
+  lineSubtotal: number;
+  signature: string;
+};
+
+/** True when stored meta matches the current cart (verification only; UI does not block on this). */
+function metaMatchesCart(
+  items: unknown[],
+  meta: CouponValidationMeta | null,
+): boolean {
+  if (!meta || !items.length) return false;
+  const line = computeLineSubtotal(items as { price: number; quantity: number }[]);
+  return (
+    meta.signature === cartMetaSignature(items) &&
+    Math.abs(line - meta.lineSubtotal) <= SUBTOTAL_MISMATCH_RUPEES
+  );
+}
+
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -26,12 +76,15 @@ function CheckoutContent() {
   const [localAddresses, setLocalAddresses] = useState<AddressData[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<number | undefined>(undefined);
   const [checkoutItems, setCheckoutItems] = useState<any[]>([]);
-  const [checkoutTotal, setCheckoutTotal] = useState(0);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
 
   const [showPolicy, setShowPolicy] = useState(false);
   const [isCouponsOpen, setIsCouponsOpen] = useState(false);
+  /** Code + label only; amounts come from {@link couponResult}. */
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponResult, setCouponResult] = useState<CouponValidateResult | null>(null);
+  /** Cart snapshot when coupon was validated (must match current lines for totals to trust API result). */
+  const [validationMeta, setValidationMeta] = useState<CouponValidationMeta | null>(null);
   const [couponInput, setCouponInput] = useState('');
   const [couponFeedback, setCouponFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
@@ -40,6 +93,26 @@ function CheckoutContent() {
   const [editingAddressData, setEditingAddressData] = useState<AddressData | null>(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
+
+  const initialCouponHydrated = useRef(false);
+  /** Prevents overlapping validate requests (state alone is async). */
+  const validatingLockRef = useRef(false);
+  /** If a cart-change revalidate was skipped while locked, run it once after unlock. */
+  const pendingCartRevalidateCodeRef = useRef<string | null>(null);
+  const validateCouponRef = useRef<(code: string, opts?: { fromCartChange?: boolean }) => Promise<void>>(async () => {});
+
+  const clearCouponStateAndStorage = useCallback(() => {
+    pendingCartRevalidateCodeRef.current = null;
+    setAppliedCoupon(null);
+    setCouponResult(null);
+    setValidationMeta(null);
+    setCouponInput('');
+    setCouponFeedback(null);
+    sessionStorage.removeItem('aarah_applied_coupon');
+    sessionStorage.removeItem('aarah_coupon_validate_result');
+    sessionStorage.removeItem('aarah_coupon_validate_meta');
+    sessionStorage.removeItem('aarah_checkout_summary');
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -57,22 +130,76 @@ function CheckoutContent() {
         } catch { /* empty */ }
       }
     }
-    
+
     setCheckoutItems(itemsToProcess);
-    setCheckoutTotal(itemsToProcess.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0));
     setLocalAddresses(contextAddresses as AddressData[]);
     if (contextAddresses.length > 0) {
       setSelectedAddress(contextAddresses[contextAddresses.length - 1].id);
     }
 
-    const savedCoupon = sessionStorage.getItem('aarah_applied_coupon');
-    if (savedCoupon) {
-      try {
-        const parsed = JSON.parse(savedCoupon);
-        setAppliedCoupon(parsed);
-        setCouponInput(parsed.code);
-      } catch {
-        sessionStorage.removeItem('aarah_applied_coupon');
+    if (!initialCouponHydrated.current && itemsToProcess.length > 0) {
+      initialCouponHydrated.current = true;
+      const savedCoupon = sessionStorage.getItem('aarah_applied_coupon');
+      const savedResult = sessionStorage.getItem('aarah_coupon_validate_result');
+      const savedMeta = sessionStorage.getItem('aarah_coupon_validate_meta');
+      if (savedCoupon) {
+        try {
+          const parsed = JSON.parse(savedCoupon) as { code?: string };
+          const sig = cartMetaSignature(itemsToProcess);
+          const lineNow = computeLineSubtotal(itemsToProcess);
+          let metaOk = false;
+          let meta: CouponValidationMeta | null = null;
+          if (savedMeta) {
+            const raw = JSON.parse(savedMeta) as { lineSubtotal?: unknown; signature?: string };
+            meta = {
+              lineSubtotal: numFromApi(raw.lineSubtotal),
+              signature: String(raw.signature ?? ''),
+            };
+            metaOk =
+              meta.signature === sig &&
+              Math.abs(lineNow - meta.lineSubtotal) <= SUBTOTAL_MISMATCH_RUPEES;
+          }
+          if (!savedResult || !parsed?.code) {
+            sessionStorage.removeItem('aarah_applied_coupon');
+            sessionStorage.removeItem('aarah_coupon_validate_result');
+            sessionStorage.removeItem('aarah_coupon_validate_meta');
+          } else if (savedMeta && meta && metaOk) {
+            const r = JSON.parse(savedResult) as CouponValidateResult;
+            setAppliedCoupon({ code: parsed.code } as Coupon);
+            setCouponInput(parsed.code ?? '');
+            setCouponResult({
+              discountAmount: numFromApi(r.discountAmount),
+              freeShipping: Boolean(r.freeShipping),
+              finalSubtotal: numFromApi(r.finalSubtotal),
+            });
+            setValidationMeta(meta);
+          } else if (savedMeta && meta && !metaOk) {
+            const r = JSON.parse(savedResult) as CouponValidateResult;
+            setAppliedCoupon({ code: parsed.code } as Coupon);
+            setCouponInput(parsed.code ?? '');
+            setCouponResult({
+              discountAmount: numFromApi(r.discountAmount),
+              freeShipping: Boolean(r.freeShipping),
+              finalSubtotal: numFromApi(r.finalSubtotal),
+            });
+            setValidationMeta(null);
+            sessionStorage.removeItem('aarah_coupon_validate_meta');
+          } else if (!savedMeta) {
+            const r = JSON.parse(savedResult) as CouponValidateResult;
+            setAppliedCoupon({ code: parsed.code } as Coupon);
+            setCouponInput(parsed.code ?? '');
+            setCouponResult({
+              discountAmount: numFromApi(r.discountAmount),
+              freeShipping: Boolean(r.freeShipping),
+              finalSubtotal: numFromApi(r.finalSubtotal),
+            });
+            setValidationMeta(null);
+          }
+        } catch {
+          sessionStorage.removeItem('aarah_applied_coupon');
+          sessionStorage.removeItem('aarah_coupon_validate_result');
+          sessionStorage.removeItem('aarah_coupon_validate_meta');
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,99 +212,178 @@ function CheckoutContent() {
       .catch(() => {});
   }, []);
 
-  const validateCoupon = async (code: string) => {
-    if (!code.trim()) return;
+  type ValidateCouponOpts = { fromCartChange?: boolean };
+
+  const validateCoupon = useCallback(async (code: string, opts?: ValidateCouponOpts) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+
+    if (validatingLockRef.current) {
+      if (opts?.fromCartChange) {
+        pendingCartRevalidateCodeRef.current = trimmed;
+      }
+      return;
+    }
+
+    validatingLockRef.current = true;
     setIsValidatingCoupon(true);
-    setCouponFeedback(null);
+    if (!opts?.fromCartChange) {
+      setCouponFeedback(null);
+    }
+
+    const lineSubtotal = computeLineSubtotal(checkoutItems);
+
     try {
       const res = await fetch(`${API_URL}/api/storefront/discounts/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code.trim(), cartTotal: checkoutTotal, cartProductIds: checkoutItems.map(i => i.id) }),
+        body: JSON.stringify({
+          code: trimmed,
+          cartSubtotal: lineSubtotal,
+          cartLines: checkoutItems.map((item: { id: string; price: number; quantity: number }) => ({
+            productId: Number(item.id),
+            quantity: item.quantity,
+            lineSubtotal: item.price * item.quantity,
+          })),
+        }),
       });
       const data = await res.json();
       if (data.valid) {
-        const coupon: Coupon = {
-          code: data.code,
-          type: data.type,
-          value: data.value,
-          desc: data.desc,
-          terms: data.terms,
-          minOrderValue: data.minOrderValue,
-          appliesTo: data.appliesTo,
-          selectedProductIds: data.selectedProductIds,
-          selectedCategoryIds: data.selectedCategoryIds,
+        const result: CouponValidateResult = {
+          discountAmount: numFromApi(data.discountAmount),
+          freeShipping: Boolean(data.freeShipping),
+          finalSubtotal: numFromApi(data.finalSubtotal),
         };
-        applyCoupon(coupon);
-        setCouponFeedback({ type: 'success', text: `${data.desc} applied!` });
+        const meta: CouponValidationMeta = {
+          lineSubtotal,
+          signature: cartMetaSignature(checkoutItems),
+        };
+        setCouponResult(result);
+        setValidationMeta(meta);
+        setAppliedCoupon({ code: trimmed } as Coupon);
+        setCouponInput(trimmed);
+        sessionStorage.setItem('aarah_applied_coupon', JSON.stringify({ code: trimmed }));
+        sessionStorage.setItem('aarah_coupon_validate_result', JSON.stringify(result));
+        sessionStorage.setItem('aarah_coupon_validate_meta', JSON.stringify(meta));
+        if (!opts?.fromCartChange) {
+          setCouponFeedback({
+            type: 'success',
+            text: typeof data.message === 'string' && data.message ? data.message : 'Coupon applied!',
+          });
+        } else {
+          setCouponFeedback(null);
+        }
       } else {
-        setCouponFeedback({ type: 'error', text: data.error || 'Invalid coupon code.' });
+        if (!opts?.fromCartChange) {
+          setCouponResult(null);
+          setAppliedCoupon(null);
+          setValidationMeta(null);
+          sessionStorage.removeItem('aarah_applied_coupon');
+          sessionStorage.removeItem('aarah_coupon_validate_result');
+          sessionStorage.removeItem('aarah_coupon_validate_meta');
+          sessionStorage.removeItem('aarah_checkout_summary');
+          setCouponFeedback({
+            type: 'error',
+            text:
+              typeof data.message === 'string' && data.message ? data.message : 'Invalid coupon code.',
+          });
+        }
       }
     } catch {
       setCouponFeedback({ type: 'error', text: 'Failed to validate coupon.' });
     } finally {
+      validatingLockRef.current = false;
       setIsValidatingCoupon(false);
-    }
-  };
-
-  const applyCoupon = (coupon: Coupon) => {
-    setAppliedCoupon(coupon);
-    setCouponInput(coupon.code);
-    setCouponFeedback({ type: 'success', text: `${coupon.code} applied!` });
-    sessionStorage.setItem('aarah_applied_coupon', JSON.stringify(coupon));
-  };
-
-  const removeCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponInput('');
-    setCouponFeedback(null);
-    sessionStorage.removeItem('aarah_applied_coupon');
-  };
-
-  const { subtotal, discountAmount, shippingFee, finalTotal, couponWarning } = useMemo(() => {
-    const currentSubtotal = checkoutItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    let currentDiscount = 0;
-    let warning: string | null = null;
-    let freeShipping = false;
-
-    if (appliedCoupon) {
-      const minRequired = appliedCoupon.minOrderValue || 0;
-      
-      const applicableSubtotal = appliedCoupon.appliesTo === 'specific_products'
-        ? checkoutItems.filter(i => appliedCoupon.selectedProductIds?.includes(i.id)).reduce((sum, item) => sum + (item.price * item.quantity), 0)
-        : currentSubtotal;
-      
-      if (currentSubtotal >= minRequired) {
-        if (applicableSubtotal > 0) {
-          if (appliedCoupon.type === 'PERCENTAGE') {
-            currentDiscount = Math.round(applicableSubtotal * (appliedCoupon.value / 100));
-            if (currentDiscount > applicableSubtotal) currentDiscount = applicableSubtotal;
-          } else if (appliedCoupon.type === 'FIXED') {
-            currentDiscount = Math.min(appliedCoupon.value, applicableSubtotal);
-          } else if (appliedCoupon.type === 'FREE_SHIPPING') {
-            freeShipping = true;
-          }
-        } else {
-          warning = 'This coupon is not applicable to the products in your cart.';
-        }
-      } else {
-        const shortfall = minRequired - currentSubtotal;
-        warning = `Add ₹${shortfall.toLocaleString('en-IN')} more to unlock your ${appliedCoupon.code} discount.`;
+      const pending = pendingCartRevalidateCodeRef.current;
+      pendingCartRevalidateCodeRef.current = null;
+      if (pending) {
+        queueMicrotask(() => {
+          void validateCouponRef.current(pending, { fromCartChange: true });
+        });
       }
     }
+  }, [checkoutItems]);
 
-    const subtotalAfterDiscount = currentSubtotal - currentDiscount;
-    const currentShipping = freeShipping ? 0 : (subtotalAfterDiscount >= 2000 ? 0 : 99);
-    const currentTotal = subtotalAfterDiscount + currentShipping;
+  validateCouponRef.current = validateCoupon;
+
+  /**
+   * Cart signature changed + coupon applied → revalidate with API (Part 1/4).
+   * First snapshot: coupon + invalid meta (legacy / hydrate) → one sync — only if no coupon, no call.
+   */
+  const cartSigRef = useRef<string | null>(null);
+  useEffect(() => {
+    const sig = cartMetaSignature(checkoutItems);
+    if (checkoutItems.length === 0) return;
+
+    if (cartSigRef.current === null) {
+      cartSigRef.current = sig;
+      return;
+    }
+
+    if (cartSigRef.current !== sig) {
+      cartSigRef.current = sig;
+      if (appliedCoupon?.code) {
+        void validateCoupon(appliedCoupon.code, { fromCartChange: true });
+      }
+    }
+  }, [checkoutItems, appliedCoupon?.code, validateCoupon]);
+
+  /**
+   * When meta is missing or stale, re-sync in the background. Only a user-initiated validate
+   * with valid=false clears coupon state; background revalidate does not.
+   */
+  useEffect(() => {
+    if (!appliedCoupon?.code) return;
+    if (metaMatchesCart(checkoutItems, validationMeta)) return;
+
+    const t = window.setTimeout(() => {
+      if (validatingLockRef.current) return;
+      void validateCouponRef.current(appliedCoupon.code, { fromCartChange: true });
+    }, 80);
+
+    return () => clearTimeout(t);
+  }, [checkoutItems, couponResult, validationMeta, appliedCoupon?.code]);
+
+  const removeCoupon = useCallback(() => {
+    clearCouponStateAndStorage();
+  }, [clearCouponStateAndStorage]);
+
+  /**
+   * Single source for order summary numbers. Totals always use couponResult.finalSubtotal when set.
+   */
+  const {
+    rawSubtotal,
+    displaySubtotal,
+    discountAmount,
+    shippingFee,
+    finalTotal,
+    effectiveCouponResult,
+  } = useMemo(() => {
+    const raw = computeLineSubtotal(checkoutItems);
+    const subtotalAfterDiscount = couponResult ? couponResult.finalSubtotal : raw;
+    const shippingCharge = couponResult?.freeShipping
+      ? 0
+      : subtotalAfterDiscount >= 2000
+        ? 0
+        : 99;
 
     return {
-      subtotal: currentSubtotal,
-      discountAmount: currentDiscount,
-      shippingFee: currentShipping,
-      finalTotal: currentTotal,
-      couponWarning: warning
+      rawSubtotal: raw,
+      displaySubtotal: couponResult ? couponResult.finalSubtotal : raw,
+      discountAmount: couponResult ? couponResult.discountAmount : 0,
+      shippingFee: shippingCharge,
+      finalTotal: subtotalAfterDiscount + shippingCharge,
+      effectiveCouponResult: couponResult,
     };
-  }, [checkoutItems, appliedCoupon]);
+  }, [checkoutItems, couponResult]);
+
+  useEffect(() => {
+    console.log('TOTAL DEBUG', {
+      subtotal: rawSubtotal,
+      couponResult,
+      finalTotal,
+    });
+  }, [rawSubtotal, couponResult, finalTotal]);
 
   const handleSaveAddress = (addressData: AddressData) => {
     if (addressData.id) {
@@ -211,11 +417,12 @@ function CheckoutContent() {
   const handlePolicyAccept = () => {
     setShowPolicy(false);
     sessionStorage.setItem('aarah_checkout_summary', JSON.stringify({
-      subtotal,
+      subtotal: displaySubtotal,
       discountAmount,
       shippingFee,
       finalTotal,
-      appliedCoupon: appliedCoupon ? { code: appliedCoupon.code, type: appliedCoupon.type, value: appliedCoupon.value } : null
+      appliedCoupon: appliedCoupon ? { code: appliedCoupon.code } : null,
+      freeShipping: effectiveCouponResult?.freeShipping ?? false,
     }));
     router.push('/payment');
   };
@@ -338,7 +545,7 @@ function CheckoutContent() {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-semantic-success" />
                     <span className="font-sans text-[12px] font-bold text-semantic-success tracking-wider">
-                      {appliedCoupon.code}{appliedCoupon.type === 'PERCENTAGE' && ` — ${appliedCoupon.value}% OFF`}
+                      {appliedCoupon.code}
                     </span>
                   </div>
                   <button onClick={removeCoupon} className="font-sans text-[10px] text-gray-400 hover:text-red-500 tracking-widest uppercase underline">Remove</button>
@@ -382,7 +589,8 @@ function CheckoutContent() {
                           <span className="font-sans text-[10px] font-bold tracking-widest uppercase text-gray-500">{coupon.desc}</span>
                         </div>
                         <button
-                          onClick={() => applyCoupon(coupon)}
+                          type="button"
+                          onClick={() => void validateCoupon(coupon.code)}
                           className="font-sans text-[10px] font-bold tracking-widest uppercase pb-0.5 border-b-2 border-primary-dark text-primary-dark hover:text-gray-500 hover:border-gray-500 transition-all flex-shrink-0"
                         >
                           APPLY
@@ -435,26 +643,17 @@ function CheckoutContent() {
             <div className="border-t border-gray-200 pt-6 space-y-4">
               <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase">
                 <span className="text-gray-500">Subtotal ({checkoutItems.length} items)</span>
-                <span className="font-bold text-primary-dark">₹{subtotal.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-primary-dark">₹{displaySubtotal.toLocaleString('en-IN')}</span>
               </div>
 
-              {appliedCoupon && (discountAmount > 0 || appliedCoupon.type === 'FREE_SHIPPING') && !couponWarning && (
+              {effectiveCouponResult && appliedCoupon && (discountAmount > 0 || effectiveCouponResult.freeShipping) && (
                 <div className="flex justify-between text-[11px] font-sans tracking-widest uppercase animate-in fade-in">
                   <span className="text-[#00a859] font-bold">
                     Discount ({appliedCoupon.code})
-                    {appliedCoupon.type === 'PERCENTAGE' && <span className="text-[10px] ml-1 font-normal">({appliedCoupon.value}% OFF)</span>}
-                    {appliedCoupon.type === 'FREE_SHIPPING' && <span className="text-[10px] ml-1 font-normal">(FREE SHIPPING)</span>}
+                    {effectiveCouponResult.freeShipping && <span className="text-[10px] ml-1 font-normal">(FREE SHIPPING)</span>}
                   </span>
                   <span className="font-bold text-[#00a859]">
-                    {appliedCoupon.type === 'FREE_SHIPPING' ? 'APPLIED' : `-₹${discountAmount.toLocaleString('en-IN')}`}
-                  </span>
-                </div>
-              )}
-
-              {couponWarning && (
-                <div className="bg-red-50 border border-red-100 p-3 rounded-sm animate-in fade-in">
-                  <span className="font-sans text-[10px] text-semantic-error font-bold uppercase tracking-widest leading-relaxed">
-                    {couponWarning}
+                    {discountAmount > 0 ? `-₹${discountAmount.toLocaleString('en-IN')}` : (effectiveCouponResult.freeShipping ? 'APPLIED' : '—')}
                   </span>
                 </div>
               )}
@@ -485,7 +684,10 @@ function CheckoutContent() {
       <CouponsModal
         isOpen={isCouponsOpen}
         onClose={() => setIsCouponsOpen(false)}
-        onApply={c => { applyCoupon(c); setIsCouponsOpen(false); }}
+        onApply={async c => {
+          setCouponInput(c.code);
+          await validateCoupon(c.code);
+        }}
         coupons={coupons}
       />
       <ExchangePolicyModal

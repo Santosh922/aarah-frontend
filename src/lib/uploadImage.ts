@@ -22,6 +22,9 @@ import { authFetch } from '@/lib/integrationAdapters';
  * If you need to support URL inputs (the "Add by URL" option in the UI),
  * those bypass this function entirely — the URL string goes straight
  * into form state without any upload.
+ *
+ * Expected server response (ApiResponse wrapper):
+ *   { success, message, data: { success, url } }
  */
 export async function uploadImage(
   file: File,
@@ -46,7 +49,17 @@ export async function uploadImage(
     }
 
     const data = await res.json();
-    return data.url ?? null;
+    console.log('UPLOAD RESPONSE:', data);
+
+    if (!data?.success || !data?.data?.url) {
+      throw new Error('Upload failed');
+    }
+
+    const path = data.data.url as string;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    return `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
   } catch (err) {
     console.error('Image upload error:', err);

@@ -13,6 +13,7 @@ interface WishlistProduct {
   image?: string;
   images?: { url: string; isPrimary: boolean }[];
   variants?: { id?: string; size: string; stock: number }[];
+  stock?: number;
   tags?: string[];
   isBestSeller?: boolean;
   isNewArrival?: boolean;
@@ -23,8 +24,8 @@ interface WishlistClientProps {
 }
 
 function WishlistItem({ product }: { product: WishlistProduct }) {
-  const hasStock = (product.variants || []).some(v => v.stock > 0);
-  const totalStock = (product.variants || []).reduce((sum, v) => sum + v.stock, 0);
+  const totalStock = Number(product.stock ?? 0);
+  const hasStock = totalStock > 0;
 
   return (
     <div className="relative">

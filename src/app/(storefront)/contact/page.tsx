@@ -1,14 +1,12 @@
 import { API_URL } from '@/lib/api';
+import { fetchStorefrontBannersForPosition, firstStorefrontBanner } from '@/lib/storefrontBanners';
 import ContactForm from './ContactForm';
 import { siteData } from '@/lib/siteConfig';
 
 async function getContactBanner() {
   try {
-    const res = await fetch(`${API_URL}/api/storefront/banners?position=contact_section`, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const banners = await res.json();
-    if (!Array.isArray(banners) || banners.length === 0) return null;
-    return banners[0];
+    const list = await fetchStorefrontBannersForPosition('contact_section');
+    return firstStorefrontBanner(list);
   } catch {
     return null;
   }

@@ -93,7 +93,7 @@ export default function Footer({ footerBanner }: { footerBanner: FooterBanner | 
   return (
     <footer className="w-full bg-[#f6f6f6] pt-0 pb-6">
       <div className="max-w-7xl mx-auto px-0 sm:px-0 lg:px-0">
-        <FooterPromoClient banner={footerBanner!} />
+        <FooterPromoClient banner={footerBanner} />
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
 
