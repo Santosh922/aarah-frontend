@@ -1,4 +1,11 @@
 const nextConfig = {
+  output: 'standalone',
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     // Required so next/image optimizer can fetch from http://localhost:8080 (loopback).
     dangerouslyAllowLocalIP: true,

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build output
+.next
+out
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+!.env.example
+
+# Dev & editor
+.git
+.gitignore
+.vscode
+.idea
+*.log
+ts_errors*.txt
+
+# Docker itself
+Dockerfile
+.dockerignore
+
+# Misc
+README.md
+*.md
