@@ -193,21 +193,6 @@ export default function ProductCard({ product, variant = 'grid' }: Props) {
           </span>
         )}
 
-        {(product.isNewArrival || product.isBestSeller) && (
-          <div className="absolute top-3 left-3 z-10">
-            {product.isNewArrival && (
-              <span className="inline-block bg-[#191919] px-2 py-1 shadow-sm">
-                <span className="font-sans text-[8px] font-bold text-white tracking-widest uppercase">Just In</span>
-              </span>
-            )}
-            {product.isBestSeller && (
-              <span className="inline-block bg-white px-2 py-1 shadow-sm">
-                <span className="font-sans text-[8px] font-bold text-primary-dark tracking-widest uppercase">Best Seller</span>
-              </span>
-            )}
-          </div>
-        )}
-
         <button
           onClick={handleFavorite}
           className={`absolute top-3 right-3 w-10 h-10 bg-white shadow-sm flex items-center justify-center z-10 transition-all hover:scale-105 ${variant === 'wishlist-panel' ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'} ${inWishlist ? 'opacity-100' : ''}`}

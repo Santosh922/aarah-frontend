@@ -621,13 +621,20 @@ function CheckoutContent() {
             <div className="flex flex-col space-y-6 mb-8 max-h-[40vh] overflow-y-auto scrollbar-thin pt-4 pr-2 pb-4">
               {checkoutItems.map((item, index) => (
                 <div key={`${item.id}-${item.size}-${index}`} className="flex space-x-4">
+                  {(() => {
+                    const imageSrc = typeof item.image === 'string' ? item.image.trim() : '';
+                    const useImage = imageSrc.length > 0;
+                    const isLocalAsset = imageSrc.startsWith('/assets/');
+                    return (
                   <div className="relative w-16 h-20 bg-gray-200 flex-shrink-0 border border-gray-200">
-                    {item.image
-                      ? <Image src={item.image} alt={item.name} fill className="object-cover" sizes="64px" />
+                    {useImage
+                      ? <Image src={imageSrc} alt={item.name} fill className="object-cover" sizes="64px" unoptimized={isLocalAsset} />
                       : <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-[10px] uppercase font-sans tracking-widest text-center leading-tight">No Img</div>
                     }
                     <div className="absolute -top-2 -right-2 bg-primary-dark text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{item.quantity}</div>
                   </div>
+                    );
+                  })()}
                   <div className="flex flex-col flex-1 justify-center">
                     <div className="flex justify-between items-start mb-1">
                       <h4 className="font-sans text-[10px] font-bold text-primary-dark pr-4 uppercase tracking-widest leading-relaxed line-clamp-1">{item.name}</h4>

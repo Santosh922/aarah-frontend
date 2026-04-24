@@ -14,6 +14,8 @@ export interface Address {
 export interface CartItem {
   id: string;
   variantId?: string;
+  productSlug?: string;
+  slug?: string;
   sku?: string;
   name: string;
   size: string;

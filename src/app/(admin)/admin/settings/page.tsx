@@ -15,6 +15,41 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** Shape of `data` from GET /api/admin/profile (API DTO). */
+type AdminProfileApiPayload = {
+    id?: number;
+    name?: string | null;
+    email?: string | null;
+    phoneNumber?: string | null;
+};
+
+/** Personal Information form (UI view model; not the raw API shape). */
+type ProfileFormViewModel = {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+};
+
+/**
+ * Maps admin profile API payload → form state (separates full `name` into first/last).
+ */
+function mapProfileResponseToViewModel(payload: AdminProfileApiPayload | null | undefined): ProfileFormViewModel {
+    if (!payload) {
+        return { firstName: '', lastName: '', email: '', phoneNumber: '' };
+    }
+    const fullName = payload.name || '';
+    const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    return {
+        firstName,
+        lastName,
+        email: payload.email || '',
+        phoneNumber: payload.phoneNumber || '',
+    };
+}
+
 // ─── Toast System ─────────────────────────────────────────────────────────────
 interface ToastItem { id: string; type: 'success' | 'error'; message: string }
 function useToast() {
@@ -61,27 +96,49 @@ function TextInput({ value, onChange, placeholder, disabled, type = 'text' }: an
 
 // 1. Profile Settings (Available to ALL)
 function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: any }) {
-    const [form, setForm] = useState({ firstName: '', lastName: '', email: '' });
+    const [form, setForm] = useState<ProfileFormViewModel>({ firstName: '', lastName: '', email: '', phoneNumber: '' });
     const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '' });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        fetch(`${API_URL}/api/admin/profile`, { headers: getClientAuthHeaders() })
-            .then(res => {
-                if (res.status === 401) { window.location.href = '/admin/login'; return null; }
+        let cancelled = false;
+        setLoading(true);
+        (async () => {
+            try {
+                const res = await fetch(`${API_URL}/api/admin/profile`, { headers: getClientAuthHeaders() });
+                if (res.status === 401) {
+                    window.location.href = '/admin/login';
+                    return;
+                }
                 if (!res.ok) throw new Error('Failed to load profile');
-                return res.json();
-            })
-            .then(data => { if (data) { setForm(data); } setLoading(false); })
-            .catch(() => setLoading(false));
+                const json = await res.json();
+                console.log('PROFILE RAW RESPONSE', json);
+                const payload = json?.data as AdminProfileApiPayload | undefined;
+                console.log('PROFILE PAYLOAD', payload);
+                if (!cancelled) {
+                    setForm(mapProfileResponseToViewModel(payload));
+                }
+            } catch {
+                if (!cancelled) {
+                    setForm({ firstName: '', lastName: '', email: '', phoneNumber: '' });
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
     }, [currentUser.id]);
 
     const handleSaveProfile = async () => {
         setSaving(true);
         try {
+            const name = [form.firstName, form.lastName].filter(Boolean).join(' ').trim();
             const res = await fetch(`${API_URL}/api/admin/profile`, {
-        method: 'PATCH', headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ ...form }) });
+                method: 'PATCH',
+                headers: getClientAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ name, email: form.email }),
+            });
             if (res.ok) {
                 toast.success('Profile updated.');
                 setTimeout(() => window.location.reload(), 800); // Reload to reflect changes in Header
@@ -108,9 +165,10 @@ function ProfileSection({ currentUser, toast }: { currentUser: AuthUser, toast: 
             <div className="p-6 rounded-2xl border border-white/[0.05] bg-white/[0.02]">
                 <h3 className="text-white font-semibold text-[15px] mb-5">Personal Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div><FieldLabel>First Name</FieldLabel><TextInput value={form.firstName} onChange={(v: string) => setForm({ ...form, firstName: v })} /></div>
-                    <div><FieldLabel>Last Name</FieldLabel><TextInput value={form.lastName} onChange={(v: string) => setForm({ ...form, lastName: v })} /></div>
-                    <div className="md:col-span-2"><FieldLabel>Email (Read Only)</FieldLabel><TextInput value={form.email} disabled /></div>
+                    <div><FieldLabel>First Name</FieldLabel><TextInput value={form.firstName || ''} onChange={(v: string) => setForm({ ...form, firstName: v })} /></div>
+                    <div><FieldLabel>Last Name</FieldLabel><TextInput value={form.lastName || ''} onChange={(v: string) => setForm({ ...form, lastName: v })} /></div>
+                    <div className="md:col-span-2"><FieldLabel>Email (Read Only)</FieldLabel><TextInput value={form.email || ''} disabled /></div>
+                    <div className="md:col-span-2"><FieldLabel>Phone (Read Only)</FieldLabel><TextInput value={form.phoneNumber || ''} disabled /></div>
                 </div>
                 <button onClick={handleSaveProfile} disabled={saving} className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-bold text-black bg-white hover:bg-white/90 disabled:opacity-50 transition-all">
                     {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Profile

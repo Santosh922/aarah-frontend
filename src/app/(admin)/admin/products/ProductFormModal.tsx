@@ -32,7 +32,10 @@ interface Product {
     status: ProductStatus; variants: Variant[]; totalStock: number;
     fabric: string;
     seo: { title: string; description: string; keywords: string; slug: string };
-    featured: boolean; createdAt: string; updatedAt: string; createdBy: string;
+    featured: boolean;
+    bestSeller: boolean;
+    newArrival: boolean;
+    createdAt: string; updatedAt: string; createdBy: string;
 }
 
 interface ProductFormModalProps {
@@ -90,6 +93,8 @@ const createBlankProduct = (categories: Category[]): Partial<Product> => ({
     fabric: '',
     seo: { title: '', description: '', keywords: '', slug: '' },
     featured: false,
+    bestSeller: false,
+    newArrival: false,
 });
 
 function FieldLabel({ children, locked }: { children: React.ReactNode; locked?: boolean }) {
@@ -516,6 +521,8 @@ export default function ProductFormModal({ product, mode, categories, currentUse
                         fabric: prod.fabric ?? prev.fabric,
                         categoryId: catId || prev.categoryId || '',
                         featured: Boolean(prod.bestSeller ?? prod.isBestSeller),
+                        bestSeller: Boolean(prod.bestSeller ?? prod.isBestSeller),
+                        newArrival: Boolean(prod.newArrival ?? prod.isNewArrival),
                         status: prod.isActive === true ? 'Active' : 'Draft',
                         price: minP > 0 ? minP : prev.price,
                         variants: vRows.length ? vRows : prev.variants,
@@ -704,6 +711,26 @@ export default function ProductFormModal({ product, mode, categories, currentUse
                                     </button>
                                 ) : (
                                     <div className="flex items-center gap-2"><span className="text-white/30 text-[12px] font-semibold">{form.featured ? 'Yes' : 'No'}</span>{canEdit && <span className="text-white/20 text-[9px] flex items-center gap-1"></span>}</div>
+                                )}
+                            </div>
+                            <div className="flex items-center justify-between p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                <div><p className="text-white/70 text-[12px] font-semibold">Best Seller</p><p className="text-white/30 text-[10px] mt-0.5">Used by storefront best-seller filtering</p></div>
+                                {canEdit ? (
+                                    <button type="button" onClick={() => set('bestSeller', !form.bestSeller)} className="w-11 h-6 rounded-full transition-all relative shrink-0" style={{ background: form.bestSeller ? '#22c55e' : 'rgba(255,255,255,0.1)' }}>
+                                        <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all" style={{ left: form.bestSeller ? 'calc(100% - 20px)' : '4px' }} />
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2"><span className="text-white/30 text-[12px] font-semibold">{form.bestSeller ? 'Yes' : 'No'}</span></div>
+                                )}
+                            </div>
+                            <div className="flex items-center justify-between p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                <div><p className="text-white/70 text-[12px] font-semibold">New Arrival</p><p className="text-white/30 text-[10px] mt-0.5">Used by storefront new-arrivals filtering</p></div>
+                                {canEdit ? (
+                                    <button type="button" onClick={() => set('newArrival', !form.newArrival)} className="w-11 h-6 rounded-full transition-all relative shrink-0" style={{ background: form.newArrival ? '#60a5fa' : 'rgba(255,255,255,0.1)' }}>
+                                        <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all" style={{ left: form.newArrival ? 'calc(100% - 20px)' : '4px' }} />
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2"><span className="text-white/30 text-[12px] font-semibold">{form.newArrival ? 'Yes' : 'No'}</span></div>
                                 )}
                             </div>
                         </>

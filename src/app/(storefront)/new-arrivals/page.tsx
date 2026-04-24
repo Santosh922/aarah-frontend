@@ -1,6 +1,6 @@
 import { API_URL } from '@/lib/api';
 import { fetchStorefrontBannersForPosition, pickFirstBannerWithImageUrl } from '@/lib/storefrontBanners';
-import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
+import { extractProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Metadata } from 'next';
 import ProductListingClient from '@/components/sections/ProductListingClient';
 import type { Product } from '@/components/ui/ProductCard';
@@ -25,7 +25,7 @@ async function getPageData() {
   const [productsData, banner] = await Promise.all([
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/storefront/products?newArrival=true&page=1&pageSize=1000&sortBy=newest`, { cache: 'no-store' });
+        const res = await fetch(`${API_URL}/api/storefront/products?newArrival=true&page=0&pageSize=1000&sortBy=newest`, { cache: 'no-store' });
         return res.ok ? res.json() : { products: [] as Product[], total: 0 };
       } catch { return { products: [] as Product[], total: 0 }; }
     })(),
@@ -39,9 +39,11 @@ async function getPageData() {
     })(),
   ]);
 
+  const apiProducts = extractProducts(productsData);
+
   return {
-    products: filterActiveProducts(extractProducts(productsData)).map(toUiProduct) as Product[],
-    total: filterActiveProducts(extractProducts(productsData)).length,
+    products: apiProducts.map(toUiProduct) as Product[],
+    total: apiProducts.length,
     banner: banner as ListingBanner | null,
   };
 }

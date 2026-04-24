@@ -34,6 +34,8 @@ interface Order {
   total: number;
   date?: string;
   createdAt: string;
+  courierName?: string;
+  trackingId?: string;
   items: OrderItem[];
   shippingAddress?: Address;
   awb?: string;
@@ -205,8 +207,34 @@ export default function AccountDashboardPage() {
       });
       if (res.ok) {
         const payload = await safeJson<any>(res, {});
-        const orders = unwrapApiResponse<Order[]>(payload);
-        setPastOrders(Array.isArray(orders) ? orders : []);
+        const body = unwrapApiResponse<any>(payload);
+        const orders = body?.content ?? payload?.content ?? [];
+
+        const normalized = (Array.isArray(orders) ? orders : []).map((o: any) => ({
+          id: String(o?.id ?? ''),
+          orderId: String(o?.orderNumber ?? ''),
+          orderNumber: String(o?.orderNumber ?? ''),
+          status: String(o?.status ?? ''),
+          total: Number(o?.totalAmount ?? 0),
+          createdAt: String(o?.createdAt ?? ''),
+          date: o?.createdAt
+            ? new Date(o.createdAt).toLocaleDateString('en-IN')
+            : '',
+          courierName: o?.courierName,
+          trackingId: o?.trackingId,
+          items: Array.isArray(o?.items)
+            ? o.items.map((item: any) => ({
+                id: String(item?.productId ?? ''),
+                name: String(item?.productName ?? ''),
+                size: String(item?.size ?? ''),
+                price: Number(item?.price ?? 0),
+                image: '',
+                quantity: Number(item?.quantity ?? 0),
+              }))
+            : [],
+        }));
+
+        setPastOrders(normalized);
       }
       else setPastOrders([]);
     } catch {
@@ -539,11 +567,16 @@ export default function AccountDashboardPage() {
                               <div className="space-y-4">
                                 {order.items?.map((item: any, idx: number) => (
                                   <div key={idx} className="flex space-x-4 bg-white p-4 border border-gray-100 shadow-sm">
-                                    {item.image && (
+                                    {(() => {
+                                      const imageSrc = typeof item.image === 'string' ? item.image.trim() : '';
+                                      const useImage = imageSrc.length > 0;
+                                      const isLocalAsset = imageSrc.startsWith('/assets/');
+                                      return useImage ? (
                                       <div className="relative w-16 h-20 bg-gray-100 flex-shrink-0">
-                                        <Image src={item.image} alt={item.name} fill className="object-cover" sizes="64px" />
+                                        <Image src={imageSrc} alt={item.name} fill className="object-cover" sizes="64px" unoptimized={isLocalAsset} />
                                       </div>
-                                    )}
+                                      ) : null;
+                                    })()}
                                     <div className="flex flex-col justify-center flex-1">
                                       <div className="flex justify-between items-start">
                                         <span className="font-sans text-[11px] font-bold text-primary-dark uppercase tracking-widest">{item.name}</span>
@@ -557,6 +590,13 @@ export default function AccountDashboardPage() {
                                   </div>
                                 ))}
                               </div>
+
+                              {order.trackingId && (
+                                <div className="mt-4 text-sm text-gray-600 bg-white p-4 border border-gray-100 shadow-sm">
+                                  <div><strong>Courier:</strong> {order.courierName || 'N/A'}</div>
+                                  <div><strong>Tracking ID:</strong> {order.trackingId}</div>
+                                </div>
+                              )}
 
                               {/* 48hr window notice in expanded view */}
                               {order.cancellable && (

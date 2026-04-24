@@ -8,7 +8,7 @@ import ProductCard from '@/components/ui/ProductCard';
 import ProductGridSkeleton from '@/components/ui/ProductGridSkeleton';
 import { API_URL } from '@/lib/api';
 import { safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
-import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
+import { extractProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Product } from '@/components/ui/ProductCard';
 
 const DEFAULT_FABRICS = ['Cotton', 'Mul Mul', 'Denim', 'Hakoba', 'Linen', 'Georgette'];
@@ -58,7 +58,7 @@ function ProductListingContent({
   const searchQuery = searchParams.get('search') || '';
 
   const normalizedInitialProducts = useMemo(
-    () => filterActiveProducts(Array.isArray(initialProducts) ? initialProducts : []).map(toUiProduct),
+    () => (Array.isArray(initialProducts) ? initialProducts : []).map(toUiProduct),
     [initialProducts],
   );
   const PAGE_SIZE = 16;
@@ -88,9 +88,7 @@ function ProductListingContent({
       const res = await fetch(`${API_URL}/api/storefront/products?${params}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to fetch');
       const payload = await safeJson<any>(res, {});
-      const rawProducts = extractProducts(payload);
-      const products = filterActiveProducts(rawProducts).map(toUiProduct);
-      console.log('STORE PRODUCTS:', products);
+      const products = extractProducts(payload).map(toUiProduct);
       setBaseProducts(products);
     } catch (error) {
       console.error('Listing fetch error:', error);

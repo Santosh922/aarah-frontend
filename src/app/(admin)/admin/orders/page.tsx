@@ -465,8 +465,8 @@ export default function AdminOrdersPage() {
 
     useEffect(() => {
         try {
-            const token = localStorage.getItem('aarah_auth_token');
-            const userRaw = localStorage.getItem('aarah_auth_user');
+            const token = localStorage.getItem('aarah_admin_token') || localStorage.getItem('aarah_auth_token');
+            const userRaw = localStorage.getItem('aarah_admin_user') || localStorage.getItem('aarah_auth_user');
             if (!token || !userRaw) {
                 window.location.href = '/admin/login';
                 return;
@@ -477,7 +477,8 @@ export default function AdminOrdersPage() {
                 return;
             }
             setAdminToken(token);
-            setCurrentUser({ id: String(user.id || ''), name: user.firstName || user.name || 'Admin' });
+            const resolvedUserId = String(user.id || user.customerId || '');
+            setCurrentUser({ id: resolvedUserId, name: user.firstName || user.name || 'Admin' });
             setView('all');
         } catch {
             window.location.href = '/admin/login';
@@ -570,8 +571,17 @@ export default function AdminOrdersPage() {
 
     const totalPages = Math.ceil(total / PAGE_SIZE);
 
-    // Prevent rendering until currentUser is set to prevent API errors
-    if (!currentUser.id) return null;
+    // Keep UI visible while auth/user state is being resolved.
+    if (!currentUser.id) {
+        return (
+            <div className="min-h-screen flex items-center justify-center" style={{ background: '#0e0e0e', color: '#fff' }}>
+                <div className="text-center">
+                    <div className="w-8 h-8 mx-auto mb-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <p className="text-white/40 text-sm">Loading orders...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen" style={{ background: '#0e0e0e', fontFamily: "'DM Sans',sans-serif", color: '#fff' }}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { API_URL } from '@/lib/api';
-import { authFetch } from '@/lib/integrationAdapters';
+import { authFetch, extractList } from '@/lib/integrationAdapters';
 import { processImageFile } from '@/lib/uploadImage';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
@@ -254,7 +254,14 @@ function CategoryDrawer({ category, mode, allCategories, currentUserId, defaultP
             setLoadingProducts(true);
             authFetch(`${API_URL}/api/admin/products?categoryId=${category.id}&pageSize=50`)
                 .then(res => res.json())
-                .then(data => setCategoryProducts(data.products || data || []))
+                .then(data => {
+                    const list =
+                        Array.isArray(data) ? data :
+                        Array.isArray(data?.data) ? data.data :
+                        Array.isArray(data?.products) ? data.products :
+                        [];
+                    setCategoryProducts(list);
+                })
                 .catch(() => console.error('Failed to fetch products'))
                 .finally(() => setLoadingProducts(false));
         }
@@ -799,6 +806,8 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
 
     const [dragId, setDragId] = useState<string | null>(null);
     const [dropId, setDropId] = useState<string | null>(null);
+    const fetchErrorToastShownRef = useRef(false);
+    const hasLoadedOnceRef = useRef(false);
 
     const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -820,9 +829,42 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
             if (!res.ok) throw new Error('Failed to fetch');
 
             const data = await res.json();
-            let list = Array.isArray(data)
-                ? data
-                : (Array.isArray(data?.data) ? data.data : (data?.categories || []));
+            // eslint-disable-next-line no-console
+            console.log('RAW ADMIN CATEGORY RESPONSE:', data);
+
+            const statusToUi = (raw: unknown, activeFlag: unknown): CategoryStatus => {
+                const val = String(raw ?? '').trim().toUpperCase();
+                if (val === 'ACTIVE') return 'Active';
+                if (typeof activeFlag === 'boolean') return activeFlag ? 'Active' : 'Inactive';
+                return 'Inactive';
+            };
+
+            let list: Category[] = extractList<any>(data).map((c: any) => ({
+                id: String(c?.id ?? ''),
+                name: String(c?.name ?? ''),
+                slug: String(c?.slug ?? ''),
+                description: String(c?.description ?? ''),
+                shortDescription: String(c?.shortDescription ?? ''),
+                parentId: c?.parentId != null ? String(c.parentId) : (c?.parent?.id != null ? String(c.parent.id) : null),
+                color: String(c?.color ?? ACCENT_COLORS[0]),
+                iconKey: String(c?.iconKey ?? 'tag'),
+                image: c?.image ? { id: String(c.image?.id ?? c.image?.url ?? ''), url: String(c.image?.url ?? ''), alt: String(c.image?.alt ?? 'Category Image') } : null,
+                bannerImage: c?.bannerImage ? { id: String(c.bannerImage?.id ?? c.bannerImage?.url ?? ''), url: String(c.bannerImage?.url ?? ''), alt: String(c.bannerImage?.alt ?? 'Banner Image') } : null,
+                status: statusToUi(c?.status, c?.active),
+                featured: Boolean(c?.featured ?? false),
+                sortOrder: Number(c?.sortOrder ?? 0),
+                productCount: Number(c?.productCount ?? 0),
+                seo: {
+                    title: String(c?.seo?.title ?? ''),
+                    description: String(c?.seo?.description ?? ''),
+                    keywords: String(c?.seo?.keywords ?? ''),
+                },
+                createdAt: String(c?.createdAt ?? new Date(0).toISOString()),
+                updatedAt: String(c?.updatedAt ?? new Date(0).toISOString()),
+                createdBy: String(c?.createdBy ?? ''),
+            })).filter((c: Category) => c.id && c.name && c.slug);
+            // eslint-disable-next-line no-console
+            console.log('PARSED ADMIN CATEGORIES:', list);
 
             // Client-side filtering/sorting fallback in case backend doesn't handle it yet
             if (debouncedSearch.trim()) {
@@ -843,12 +885,29 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
             const sc: Record<string, number> = { All: list.length };
             for (const c of list) sc[c.status] = (sc[c.status] ?? 0) + 1;
             setStatusCounts(sc);
+            fetchErrorToastShownRef.current = false;
 
-        } catch { toast.error('Failed to load categories.'); }
+        } catch {
+            if (!fetchErrorToastShownRef.current) {
+                fetchErrorToastShownRef.current = true;
+                toast.error('Failed to load categories.');
+            }
+        }
         finally { setLoading(false); setRefreshing(false); }
-    }, [debouncedSearch, filterStatus, sortBy, toast]);
+    }, [debouncedSearch, filterStatus, sortBy]);
 
-    useEffect(() => { fetchCats(); }, [fetchCats]);
+    useEffect(() => {
+        fetchCats();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        if (!hasLoadedOnceRef.current) {
+            hasLoadedOnceRef.current = true;
+            return;
+        }
+        fetchCats();
+    }, [debouncedSearch, filterStatus, sortBy, fetchCats]);
 
     useEffect(() => {
         if (categories.length > 0 && expandedIds.size === 0) {

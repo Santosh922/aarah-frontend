@@ -439,10 +439,17 @@ function PaymentContent() {
             <div className="flex flex-col space-y-6 mb-8 max-h-[30vh] overflow-y-auto pr-2">
               {paymentItems.map(item => (
                 <div key={`${item.id}-${item.size}`} className="flex space-x-4">
+                  {(() => {
+                    const imageSrc = typeof item.image === 'string' ? item.image.trim() : '';
+                    const useImage = imageSrc.length > 0;
+                    const isLocalAsset = imageSrc.startsWith('/assets/');
+                    return (
                   <div className="relative w-16 h-20 bg-gray-200 flex-shrink-0 border border-gray-200">
-                    {item.image && <Image src={item.image} alt={item.name} fill className="object-cover" sizes="64px" />}
+                    {useImage && <Image src={imageSrc} alt={item.name} fill className="object-cover" sizes="64px" unoptimized={isLocalAsset} />}
                     <div className="absolute -top-2 -right-2 bg-primary-dark text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{item.quantity}</div>
                   </div>
+                    );
+                  })()}
                   <div className="flex flex-col flex-1 justify-center">
                     <div className="flex justify-between items-start mb-1">
                       <h4 className="font-sans text-[10px] font-bold text-primary-dark pr-4 uppercase tracking-widest line-clamp-1">{item.name}</h4>

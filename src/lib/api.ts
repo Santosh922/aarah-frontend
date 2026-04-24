@@ -12,7 +12,4 @@ export const API_URL = configuredApiUrl || 'http://localhost:8080';
 
 if (typeof window !== 'undefined' && !(window as any).__AARAH_API_URL_LOGGED__) {
   (window as any).__AARAH_API_URL_LOGGED__ = true;
-  // Temporary debug log to verify the resolved backend base URL.
-  // eslint-disable-next-line no-console
-  console.info('[api] Using API_URL:', API_URL);
 }

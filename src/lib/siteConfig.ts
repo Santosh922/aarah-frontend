@@ -20,7 +20,7 @@ export const siteData = {
     subtitle: "Breathable fabrics. Thoughtful silhouettes. Discreet feeding access. Designed to support you during pregnancy and beyond.",
     buttonText: "SHOP NOW",
     buttonLink: "/shop/all",
-    imagePath: "/assets/images/hero-aaraha.jpg", 
+    imagePath: "/assets/images/journey-banner.jpg", 
   },
 
   // 3. About Us / Story Section

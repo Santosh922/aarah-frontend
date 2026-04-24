@@ -38,7 +38,10 @@ interface Product {
     status: ProductStatus; variants: Variant[]; totalStock: number;
     fabric: string;
     seo: { title: string; description: string; keywords: string; slug: string };
-    featured: boolean; createdAt: string; updatedAt: string; createdBy: string;
+    featured: boolean;
+    bestSeller: boolean;
+    newArrival: boolean;
+    createdAt: string; updatedAt: string; createdBy: string;
 }
 
 interface ProductClientTableProps {
@@ -162,6 +165,8 @@ function mapAdminProductToUi(p: any) {
             slug: p?.seo?.slug ?? p.slug ?? '',
         },
         featured: Boolean(p.featured ?? p.bestSeller ?? p.isBestSeller),
+        bestSeller: Boolean(p.bestSeller ?? p.isBestSeller),
+        newArrival: Boolean(p.newArrival ?? p.isNewArrival),
         createdAt: p.createdAt ?? new Date().toISOString(),
         updatedAt: p.updatedAt ?? new Date().toISOString(),
         createdBy: '',
@@ -419,6 +424,8 @@ export default function ProductClientTable({ initialProducts, initialCategories,
 
         const payload = {
             ...data,
+            bestSeller: Boolean(data.bestSeller),
+            newArrival: Boolean(data.newArrival),
             name,
             categoryId: categoryIdNum,
             variants: Array.isArray(data.variants) ? data.variants : [],

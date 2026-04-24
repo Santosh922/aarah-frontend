@@ -54,11 +54,15 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
   useEffect(() => {
     fetchStorefrontCategories()
       .then((data) => {
+        const entries = data.flatMap((c) => {
+          const self = [{ name: c.name, href: `/shop/${c.slug}` }];
+          const children = Array.isArray(c.children)
+            ? c.children.map((child) => ({ name: child.name, href: `/shop/${child.slug}` }))
+            : [];
+          return [...self, ...children];
+        });
         setCategoryDropdown(
-          data.map(c => ({
-            name: c.name,
-            href: `/shop/${c.slug}`,
-          }))
+          entries
         );
       })
       .catch(() => {});
@@ -66,7 +70,7 @@ const [searchResults, setSearchResults] = useState<Product[]>([]);
 
   const LOWER_NAV: NavLink[] = [
     {
-      name: 'CATEGORIES',
+      name: 'ALL PRODUCTS',
       href: '/shop',
       dropdown: categoryDropdown.length > 0 ? categoryDropdown : null,
     },

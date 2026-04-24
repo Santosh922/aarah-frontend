@@ -47,7 +47,14 @@ async function getCoupons() {
     const res = await fetch(`${API_URL}/api/storefront/discounts`, {
       next: { revalidate: 3600 }
     });
-    if (res.ok) return res.json();
+    if (res.ok) {
+      const payload = await res.json();
+      const unwrapped = unwrapApiResponse<any>(payload);
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(unwrapped)) return unwrapped;
+      if (Array.isArray(payload?.data)) return payload.data;
+      return [];
+    }
     return [];
   } catch {
     return [];

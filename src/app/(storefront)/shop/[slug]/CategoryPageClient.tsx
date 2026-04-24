@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ChevronDown, SlidersHorizontal, ArrowDownUp, X, Check } from 'lucide-react';
 import ProductCard from '@/components/ui/ProductCard';
 import ProductGridSkeleton from '@/components/ui/ProductGridSkeleton';
 import { API_URL } from '@/lib/api';
 import { safeJson, unwrapApiResponse } from '@/lib/integrationAdapters';
-import { extractProducts, filterActiveProducts, toUiProduct } from '@/lib/productAdapter';
+import { extractProducts, toUiProduct } from '@/lib/productAdapter';
 import type { Product } from '@/components/ui/ProductCard';
 
 const DEFAULT_FABRICS = ['Cotton', 'Mul Mul', 'Denim', 'Hakoba', 'Linen', 'Georgette'];
@@ -20,21 +20,21 @@ const SORT_OPTIONS = [
   { id: 'price-high',  label: 'Price: High to Low' },
 ];
 
-function CategoryPageContent({ initialProducts, initialTotal, categoryName, categoryId }: {
+function CategoryPageContent({ initialProducts, initialTotal, categoryName, categorySlug }: {
   initialProducts: Product[];
   initialTotal: number;
   categoryName: string;
-  categoryId: string;
+  categorySlug: string;
 }) {
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get('search') || '';
 
   const [allProducts, setAllProducts] = useState<Product[]>(initialProducts);
   const [total, setTotal]             = useState(initialTotal);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(0);
   const [isLoading, setIsLoading]   = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [fetchedPages, setFetchedPages]   = useState<Set<number>>(new Set([1]));
+  const [fetchedPages, setFetchedPages]   = useState<Set<number>>(new Set([0]));
 
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
   const [fabricOptions, setFabricOptions]     = useState<string[]>(DEFAULT_FABRICS);
@@ -51,7 +51,7 @@ function CategoryPageContent({ initialProducts, initialTotal, categoryName, cate
 
   const fetchPage = useCallback(async (page: number) => {
     const params = new URLSearchParams();
-    params.set('category', categoryId);
+    params.set('category', categorySlug);
     if (searchQuery) params.set('search', searchQuery);
     if (sortBy !== 'recommended') params.set('sortBy', sortBy);
     selectedFabrics.forEach(f => params.append('fabric', f));
@@ -64,20 +64,19 @@ function CategoryPageContent({ initialProducts, initialTotal, categoryName, cate
     const payload = await safeJson<any>(res, {});
     const raw = unwrapApiResponse<any>(payload);
     const rows = extractProducts(raw);
-    const products = filterActiveProducts(rows).map(toUiProduct);
-    console.log('STORE PRODUCTS:', products);
+    const products = rows.map(toUiProduct);
     return {
       products,
       total: Number(raw?.total ?? raw?.totalElements ?? rows.length ?? 0),
     };
-  }, [categoryId, searchQuery, sortBy, selectedFabrics, selectedSizes]);
+  }, [categorySlug, searchQuery, sortBy, selectedFabrics, selectedSizes]);
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
-    setFetchedPages(new Set([1]));
-    setCurrentPage(1);
+    setFetchedPages(new Set([0]));
+    setCurrentPage(0);
     try {
-      const data = await fetchPage(1);
+      const data = await fetchPage(0);
       setAllProducts(data.products || []);
       setTotal(data.total || 0);
     } catch (error) {
@@ -381,7 +380,7 @@ export default function CategoryPageClient(props: {
   initialProducts: Product[];
   initialTotal: number;
   categoryName: string;
-  categoryId: string;
+  categorySlug: string;
 }) {
   return (
     <Suspense fallback={

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import type { AdminUser } from '@/types';
 
@@ -40,14 +40,15 @@ export function useAdminAuth(): UseAdminAuthReturn {
     window.location.href = '/admin/login';
   };
 
-  const mappedAdmin: AdminUser | null = currentUser && isAdmin
-    ? {
-        id: currentUser.customerId,
-        name: currentUser.name,
-        avatar: (currentUser.name?.[0] ?? 'A').toUpperCase(),
-        email: currentUser.email ?? '',
-      }
-    : null;
+  const mappedAdmin = useMemo((): AdminUser | null => {
+    if (!currentUser || !isAdmin) return null;
+    return {
+      id: currentUser.customerId,
+      name: currentUser.name,
+      avatar: (currentUser.name?.[0] ?? 'A').toUpperCase(),
+      email: currentUser.email ?? '',
+    };
+  }, [currentUser, isAdmin]);
 
   return { currentUser: mappedAdmin, isMounted: isHydrated, handleLogout };
 }

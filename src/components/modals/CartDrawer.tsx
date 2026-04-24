@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +22,43 @@ interface Address {
   phone: string;
   isDefault?: boolean;
 }
+
+const PLACEHOLDER_IMAGE = '/assets/images/fabric-placeholder.jpg';
+
+const CartItemImage = memo(function CartItemImage({
+  src,
+  alt,
+  className,
+}: {
+  src?: string | null;
+  alt: string;
+  className?: string;
+}) {
+  const normalizedSrc = useMemo(() => {
+    const candidate = typeof src === 'string' ? src.trim() : '';
+    return candidate || PLACEHOLDER_IMAGE;
+  }, [src]);
+  const [imgSrc, setImgSrc] = useState(normalizedSrc);
+
+  useEffect(() => {
+    setImgSrc(normalizedSrc);
+  }, [normalizedSrc]);
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[CartModalImage] render', { normalizedSrc });
+  }
+
+  const handleError = () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[CartModalImage] onError', { imgSrc });
+    }
+    if (imgSrc !== PLACEHOLDER_IMAGE) {
+      setImgSrc(PLACEHOLDER_IMAGE);
+    }
+  };
+
+  return <img src={imgSrc} alt={alt} className={className} onError={handleError} />;
+});
 
 export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const { cartItems, updateQuantity, removeFromCart, addresses: localAddresses } = useCart();
@@ -109,6 +146,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           ) : (
             <div className="flex flex-col px-6 py-6 space-y-8">
               {cartItems.map((item) => {
+                const productHref = `/product/${item.productSlug || item.slug || item.id}`;
                 const discountPct = item.originalPrice && item.originalPrice > item.price 
                   ? Math.round((1 - item.price / item.originalPrice) * 100) 
                   : 0;
@@ -116,18 +154,18 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 return (
                   <div key={`${item.id}-${item.size}`} className="flex gap-5 relative group">
                     
-                    <Link href={`/product/${item.id}`} onClick={onClose} className="shrink-0 w-[90px] h-[120px] bg-[#F5F5F5] overflow-hidden">
-                      {item.image ? (
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-gray-100" />
-                      )}
+                    <Link href={productHref} onClick={onClose} className="shrink-0 w-[90px] h-[120px] bg-[#F5F5F5] overflow-hidden">
+                      <CartItemImage
+                        src={item.image}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
                     </Link>
 
                     <div className="flex flex-col flex-1 pt-1">
                       
                       <div className="flex justify-between items-start pr-2">
-                        <Link href={`/product/${item.id}`} onClick={onClose} className="font-sans text-[15px] font-normal text-[#191919] leading-snug max-w-[85%]">
+                        <Link href={productHref} onClick={onClose} className="font-sans text-[15px] font-normal text-[#191919] leading-snug max-w-[85%]">
                           {item.name}
                         </Link>
                         <button 

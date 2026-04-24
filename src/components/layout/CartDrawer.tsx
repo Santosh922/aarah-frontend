@@ -2,9 +2,46 @@
 
 import { useCart } from '@/context/CartContext';
 import { X, Trash2, Plus, Minus, Check, ShoppingBag } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
+const PLACEHOLDER_IMAGE = '/assets/images/fabric-placeholder.jpg';
+
+const CartItemImage = memo(function CartItemImage({
+  src,
+  alt,
+  className,
+}: {
+  src?: string | null;
+  alt: string;
+  className?: string;
+}) {
+  const normalizedSrc = useMemo(() => {
+    const candidate = typeof src === 'string' ? src.trim() : '';
+    return candidate || PLACEHOLDER_IMAGE;
+  }, [src]);
+  const [imgSrc, setImgSrc] = useState(normalizedSrc);
+
+  useEffect(() => {
+    setImgSrc(normalizedSrc);
+  }, [normalizedSrc]);
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[CartItemImage] render', { normalizedSrc });
+  }
+
+  const handleError = () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[CartItemImage] onError', { imgSrc });
+    }
+    if (imgSrc !== PLACEHOLDER_IMAGE) {
+      setImgSrc(PLACEHOLDER_IMAGE);
+    }
+  };
+
+  return <img src={imgSrc} alt={alt} className={className} onError={handleError} />;
+});
 
 export default function CartDrawer() {
   const router = useRouter();
@@ -75,11 +112,11 @@ export default function CartDrawer() {
                 <div key={`${item.id}-${item.size}-${index}`} className="flex space-x-4 relative group">
                   {/* Image */}
                   <div className="w-20 h-28 bg-[#F5F5F5] flex-shrink-0 rounded-sm overflow-hidden">
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover object-top" />
-                    ) : (
-                      <div className="w-full h-full bg-gray-200" />
-                    )}
+                    <CartItemImage
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover object-top"
+                    />
                   </div>
 
                   {/* Details */}

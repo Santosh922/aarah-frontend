@@ -958,11 +958,14 @@ function CustomersView({ currentUser, onLogout, toast, toastItems, removeToast }
 
             if (res.ok) {
                 const json = await res.json();
-                setCustomers(json.customers || []);
-                setTotal(json.total || 0);
-                setStatusCounts(json.statusCounts || {});
-                setTierCounts(json.tierCounts || {});
-                setStats(json.stats || null);
+                console.log("CUSTOMER API RAW", json);
+                const payload = json.data;
+                console.log("CUSTOMER PAYLOAD", payload);
+                setCustomers(payload?.customers || []);
+                setTotal(payload?.total || 0);
+                setStatusCounts(payload?.statusCounts || {});
+                setTierCounts(payload?.tierCounts || {});
+                setStats(payload?.stats || {});
             }
         } catch (error) {
             console.error("Silent API error:", error);

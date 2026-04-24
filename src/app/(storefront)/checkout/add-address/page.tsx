@@ -181,10 +181,16 @@ function AddressFormContent() {
          <div className="flex flex-col space-y-6 mb-8">
             {cartItems.map((item) => (
               <div key={`${item.id}-${item.size}`} className="flex space-x-4">
+                {(() => {
+                  const imageSrc = typeof item.image === 'string' ? item.image.trim() : '';
+                  const isLocalAsset = imageSrc.startsWith('/assets/');
+                  return (
                 <div className="relative w-16 h-20 bg-gray-100 flex-shrink-0 border border-gray-100">
-                  <Image src={item.image} alt={item.name} fill className="object-cover" sizes="64px" />
+                  <Image src={imageSrc || '/assets/images/fabric-placeholder.jpg'} alt={item.name} fill className="object-cover" sizes="64px" unoptimized={isLocalAsset || !imageSrc} />
                   <div className="absolute -top-2 -right-2 bg-primary-dark text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-sm">{item.quantity}</div>
                 </div>
+                  );
+                })()}
                 <div className="flex flex-col flex-1 justify-center py-1">
                   <div className="flex justify-between items-start mb-1">
                     <h4 className="font-sans text-[9px] font-bold text-primary-dark pr-4 uppercase tracking-[0.1em] leading-relaxed">{item.name}</h4>

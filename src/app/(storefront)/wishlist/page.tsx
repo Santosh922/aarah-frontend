@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import WishlistClient from './WishlistClient';
+import WishlistPageClient from './WishlistPageClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default async function WishlistPage() {
-  return <WishlistClient wishlistProducts={[]} />;
+  return <WishlistPageClient />;
 }

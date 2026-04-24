@@ -50,7 +50,7 @@ function normalizeBannerImageUrl(url: string | null | undefined): string {
 }
 
 const HERO_FALLBACK: HeroData = {
-  backgroundImage: '/assets/images/hero-aaraha.jpg',
+  backgroundImage: '/assets/images/journey-banner.jpg',
   heading: 'Made for Motherhood from Maternity to Feeding.',
   subheading: 'Breathable fabrics. Thoughtful silhouettes. Discreet feeding access.',
   buttonText: 'SHOP NOW',

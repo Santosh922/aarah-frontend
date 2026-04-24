@@ -30,12 +30,63 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const CART_IMAGE_PLACEHOLDER = '/assets/images/fabric-placeholder.jpg';
+
+function resolveCartImage(rawImage?: unknown, rawThumbnailImage?: unknown): string {
+  const pick = (typeof rawImage === 'string' && rawImage.trim())
+    ? rawImage.trim()
+    : (typeof rawThumbnailImage === 'string' ? rawThumbnailImage.trim() : '');
+
+  if (!pick) return CART_IMAGE_PLACEHOLDER;
+  const lower = pick.toLowerCase();
+  if (lower.includes('null') || lower.includes('undefined')) return CART_IMAGE_PLACEHOLDER;
+
+  if (pick.startsWith('http://') || pick.startsWith('https://')) {
+    return pick;
+  }
+
+  if (pick.startsWith('/assets/')) {
+    return pick;
+  }
+
+  if (pick.startsWith('/uploads/') || pick.startsWith('uploads/')) {
+    const path = pick.startsWith('/') ? pick : `/${pick}`;
+    return `${API_URL}${path}`;
+  }
+
+  return CART_IMAGE_PLACEHOLDER;
+}
+
+function normalizeCartItem(raw: any): CartItem {
+  const image = resolveCartImage(raw?.image, raw?.thumbnailImage);
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('RAW CART ITEM:', raw);
+    console.log('FINAL IMAGE:', image);
+  }
+
+  return {
+    id: String(raw?.id ?? ''),
+    variantId: raw?.variantId != null ? String(raw.variantId) : undefined,
+    productSlug: typeof raw?.productSlug === 'string' ? raw.productSlug : undefined,
+    slug: typeof raw?.slug === 'string' ? raw.slug : undefined,
+    sku: typeof raw?.sku === 'string' ? raw.sku : undefined,
+    name: String(raw?.name ?? ''),
+    size: String(raw?.size ?? ''),
+    price: Number(raw?.price ?? 0),
+    originalPrice: raw?.originalPrice != null ? Number(raw.originalPrice) : undefined,
+    image,
+    quantity: Math.max(1, Number(raw?.quantity ?? 1)),
+  };
+}
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { currentUser, isAuthenticated } = useAuth();
 
   const syncFavoritesRef = useRef(false);
   const syncAddressesRef = useRef(false);
+  const isSyncingCartRef = useRef(false);
+  const lastSyncedSignatureRef = useRef<string>('');
 
   const [isMounted, setIsMounted] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -50,7 +101,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const savedAddresses = localStorage.getItem('aarah_addresses');
       const savedFavorites = localStorage.getItem('aarah_favorites');
 
-      if (savedCart) setCartItems(JSON.parse(savedCart));
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart);
+        setCartItems(Array.isArray(parsed) ? parsed.map(normalizeCartItem) : []);
+      }
       if (savedAddresses) setAddresses(JSON.parse(savedAddresses));
       if (savedFavorites) {
         const parsed = JSON.parse(savedFavorites);
@@ -72,14 +126,51 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!isMounted || !isAuthenticated || !currentUser?.customerId) return;
 
     const sync = async () => {
+      const signature = JSON.stringify(cartItems.map((i) => ({
+        id: i.id,
+        variantId: i.variantId,
+        quantity: i.quantity,
+      })));
+      if (isSyncingCartRef.current || signature === lastSyncedSignatureRef.current) {
+        return;
+      }
+      isSyncingCartRef.current = true;
       try {
-        await authFetch(`${API_URL}/api/storefront/cart`, {
+        const res = await authFetch(`${API_URL}/api/storefront/cart`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items: cartItems }),
         });
+        if (!res.ok) return;
+
+        const payload = await safeJson<any>(res, {});
+        const data = unwrapApiResponse<any>(payload);
+        const serverItemsRaw = Array.isArray(data?.items) ? data.items : [];
+        if (serverItemsRaw.length === 0) return;
+
+        const normalizedServerItems = serverItemsRaw.map((raw: any) => normalizeCartItem({
+          id: raw?.productId ?? raw?.id,
+          variantId: raw?.variantId,
+          productSlug: raw?.productSlug,
+          slug: raw?.productSlug,
+          name: raw?.productName ?? raw?.name,
+          size: raw?.size,
+          price: raw?.price,
+          quantity: raw?.quantity,
+          image: raw?.image ?? raw?.thumbnailImage,
+          thumbnailImage: raw?.thumbnailImage,
+        }));
+
+        setCartItems((prev) => {
+          const prevKey = JSON.stringify(prev);
+          const nextKey = JSON.stringify(normalizedServerItems);
+          return prevKey === nextKey ? prev : normalizedServerItems;
+        });
+        lastSyncedSignatureRef.current = signature;
       } catch (e) {
         console.error('Cart sync failed', e);
+      } finally {
+        isSyncingCartRef.current = false;
       }
     };
 
@@ -96,13 +187,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const payload = await safeJson<any>(res, {});
         const data = unwrapApiResponse<any>(payload);
         const wishlist = Array.isArray(data?.wishlist) ? data.wishlist : (Array.isArray(data) ? data.map((w: any) => String(w.productId ?? w.id)) : []);
-        if (wishlist.length > 0) {
-          setFavorites(prev => {
-            const merged = Array.from(new Set([...prev, ...wishlist]));
-            localStorage.setItem('aarah_favorites', JSON.stringify(merged));
-            return merged;
-          });
-        }
+        console.log('WISHLIST DATA:', data);
+        setFavorites(wishlist);
+        localStorage.setItem('aarah_favorites', JSON.stringify(wishlist));
       }
     } catch (e) {
       console.error('Failed to sync favorites from database', e);
@@ -184,18 +271,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const closeCart = useCallback(() => setIsCartOpen(false), []);
 
   const addToCart = useCallback((newItem: CartItem, silent = false) => {
+    const safeNewItem = normalizeCartItem(newItem);
     setCartItems(prev => {
       const existing = prev.find(
-        i => String(i.id) === String(newItem.id) && i.size === newItem.size,
+        i => String(i.id) === String(safeNewItem.id) && i.size === safeNewItem.size,
       );
       if (existing) {
         return prev.map(i =>
-          String(i.id) === String(newItem.id) && i.size === newItem.size
-            ? { ...i, quantity: i.quantity + newItem.quantity }
+          String(i.id) === String(safeNewItem.id) && i.size === safeNewItem.size
+            ? { ...i, quantity: i.quantity + safeNewItem.quantity }
             : i,
         );
       }
-      return [...prev, newItem];
+      return [...prev, safeNewItem];
     });
     if (!silent) setIsCartOpen(true);
   }, []);
@@ -222,21 +310,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const sid = String(id);
     const isFavorited = favorites.includes(sid);
     const previous = favorites;
+    const updated = isFavorited ? previous.filter((f) => f !== sid) : [...previous, sid];
 
-    setFavorites(prev =>
-      prev.includes(sid) ? prev.filter(f => f !== sid) : [...prev, sid],
-    );
+    setFavorites(updated);
 
     if (isAuthenticated && currentUser?.customerId) {
+      if (String(currentUser?.role ?? '').toUpperCase() !== 'USER') {
+        console.warn('Skipping wishlist API for non-user session');
+        setFavorites(previous);
+        localStorage.setItem('aarah_favorites', JSON.stringify(previous));
+        return;
+      }
       try {
-        const res = await authFetch(`${API_URL}/api/storefront/favorites`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            productId: sid,
-            isFavorited: !isFavorited,
-          })
-        });
+        const res = isFavorited
+          ? await authFetch(`${API_URL}/api/storefront/favorites/${sid}`, {
+              method: 'DELETE',
+            })
+          : await authFetch(`${API_URL}/api/storefront/favorites`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ productId: Number(sid) }),
+            });
+        const responsePayload = await safeJson<any>(res, null);
+        console.log('FAVORITE API RESPONSE:', responsePayload);
         if (!res.ok) throw new Error('Wishlist sync failed');
       } catch (e) {
         console.error('Failed to sync wishlist to database', e);
