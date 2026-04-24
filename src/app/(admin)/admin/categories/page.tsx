@@ -30,8 +30,8 @@ type DrawerTab = 'general' | 'media' | 'seo' | 'products';
 interface Category {
     id: string; name: string; slug: string; description: string; shortDescription: string;
     parentId: string | null; color: string; iconKey: string;
-    image: { id: string; url: string; alt: string } | null;
-    bannerImage: { id: string; url: string; alt: string } | null;
+    image: string | { id: string; url: string; alt: string } | null;
+    bannerImage: string | { id: string; url: string; alt: string } | null;
     status: CategoryStatus; featured: boolean; sortOrder: number; productCount: number;
     seo: { title: string; description: string; keywords: string };
     createdAt: string; updatedAt: string; createdBy: string;
@@ -78,6 +78,20 @@ const BLANK_CAT: Partial<Category> = {
 const uid = () => Math.random().toString(36).slice(2, 10).toUpperCase();
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+const normalizeMedia = (raw: any, fallbackAlt: string) => {
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+        const url = raw.trim();
+        return url ? { id: url, url, alt: fallbackAlt } : null;
+    }
+    const url = typeof raw?.url === 'string' ? raw.url.trim() : '';
+    if (!url) return null;
+    return {
+        id: String(raw?.id ?? url),
+        url,
+        alt: String(raw?.alt ?? fallbackAlt),
+    };
+};
 
 // ─── Permissions ─────────────────────────────────────────────────────────────
 const PERMS = {
@@ -680,6 +694,7 @@ function CategoryCard({ cat, depth = 0, isSelected, onSelect, onView, onEdit, on
     }, []);
 
     const cfg = STATUS_CFG[cat.status as CategoryStatus];
+    const imageUrl = typeof cat.image === 'string' ? cat.image : cat.image?.url;
 
     return (
         <div className={`group relative rounded-2xl transition-all duration-150 ${isDragging ? 'opacity-40 scale-[0.98]' : ''} ${isDropTarget ? 'ring-2' : ''}`}
@@ -703,9 +718,13 @@ function CategoryCard({ cat, depth = 0, isSelected, onSelect, onView, onEdit, on
                         </button>
                     )}
 
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all"
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all overflow-hidden"
                         style={{ background: `${cat.color}18`, border: `1px solid ${cat.color}30`, color: cat.color }}>
-                        <CatIcon iconKey={cat.iconKey} className="w-5 h-5" />
+                        {imageUrl ? (
+                            <img src={imageUrl} alt={cat.name} className="w-full h-full object-cover" />
+                        ) : (
+                            <CatIcon iconKey={cat.iconKey} className="w-5 h-5" />
+                        )}
                     </div>
 
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={onView}>
@@ -848,8 +867,8 @@ function CategoriesView({ currentUser, onLogout, toast, toastItems, removeToast 
                 parentId: c?.parentId != null ? String(c.parentId) : (c?.parent?.id != null ? String(c.parent.id) : null),
                 color: String(c?.color ?? ACCENT_COLORS[0]),
                 iconKey: String(c?.iconKey ?? 'tag'),
-                image: c?.image ? { id: String(c.image?.id ?? c.image?.url ?? ''), url: String(c.image?.url ?? ''), alt: String(c.image?.alt ?? 'Category Image') } : null,
-                bannerImage: c?.bannerImage ? { id: String(c.bannerImage?.id ?? c.bannerImage?.url ?? ''), url: String(c.bannerImage?.url ?? ''), alt: String(c.bannerImage?.alt ?? 'Banner Image') } : null,
+                image: normalizeMedia(c?.image, 'Category Image'),
+                bannerImage: normalizeMedia(c?.bannerImage, 'Banner Image'),
                 status: statusToUi(c?.status, c?.active),
                 featured: Boolean(c?.featured ?? false),
                 sortOrder: Number(c?.sortOrder ?? 0),

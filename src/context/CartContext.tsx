@@ -82,6 +82,9 @@ function normalizeCartItem(raw: any): CartItem {
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { currentUser, isAuthenticated } = useAuth();
+  const resolvedUserId = currentUser?.customerId ? String(currentUser.customerId) : null;
+  const CART_KEY = resolvedUserId ? `aarah_cart_${resolvedUserId}` : 'aarah_cart_guest';
+  const ADDRESS_KEY = resolvedUserId ? `aarah_addresses_${resolvedUserId}` : 'aarah_addresses_guest';
 
   const syncFavoritesRef = useRef(false);
   const syncAddressesRef = useRef(false);
@@ -89,6 +92,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const lastSyncedSignatureRef = useRef<string>('');
 
   const [isMounted, setIsMounted] = useState(false);
+  const [isStorageReady, setIsStorageReady] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -96,9 +100,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    setIsStorageReady(false);
+
+    setCartItems([]);
+    setAddresses([]);
+    syncAddressesRef.current = false;
+    syncFavoritesRef.current = false;
+    isSyncingCartRef.current = false;
+    lastSyncedSignatureRef.current = '';
+
+    // Safety: do not hydrate user data when auth identity is not ready.
+    if (!resolvedUserId) {
+      setIsStorageReady(true);
+      return;
+    }
+
     try {
-      const savedCart = localStorage.getItem('aarah_cart');
-      const savedAddresses = localStorage.getItem('aarah_addresses');
+      const savedCart = localStorage.getItem(CART_KEY);
+      const savedAddresses = localStorage.getItem(ADDRESS_KEY);
       const savedFavorites = localStorage.getItem('aarah_favorites');
 
       if (savedCart) {
@@ -112,15 +135,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       console.error('Failed to load cart from localStorage', e);
+    } finally {
+      setIsStorageReady(true);
     }
-  }, []);
+  }, [isMounted, resolvedUserId, CART_KEY, ADDRESS_KEY]);
 
   useEffect(() => {
-    if (!isMounted) return;
-    localStorage.setItem('aarah_cart', JSON.stringify(cartItems));
-    localStorage.setItem('aarah_addresses', JSON.stringify(addresses));
+    if (!isMounted || !isStorageReady) return;
+    localStorage.setItem(CART_KEY, JSON.stringify(cartItems));
+    localStorage.setItem(ADDRESS_KEY, JSON.stringify(addresses));
     localStorage.setItem('aarah_favorites', JSON.stringify(favorites));
-  }, [cartItems, addresses, favorites, isMounted]);
+  }, [cartItems, addresses, favorites, isMounted, isStorageReady, CART_KEY, ADDRESS_KEY]);
 
   useEffect(() => {
     if (!isMounted || !isAuthenticated || !currentUser?.customerId) return;
@@ -212,16 +237,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const payload = await safeJson<any>(res, {});
         const extractedAddresses = payload?.data?.addresses ?? payload?.data ?? payload;
         const dbAddresses: Address[] = Array.isArray(extractedAddresses) ? extractedAddresses : [];
-        setAddresses(prev => {
-          const localIds = new Set(prev.map(a => a.id));
-          const merged = [...prev];
-          for (const dbAddr of dbAddresses) {
-            if (!localIds.has(dbAddr.id)) {
-              merged.push(dbAddr);
-            }
-          }
-          return merged;
-        });
+        setAddresses(dbAddresses);
       }
     } catch (e) {
       console.error('Failed to sync addresses from database', e);
@@ -251,13 +267,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           if (savedId) {
             const updated = prev.map(a => a.id === newId ? { ...a, id: savedId } : a);
             setAddresses(updated);
-            localStorage.setItem('aarah_addresses', JSON.stringify(updated));
+            localStorage.setItem(ADDRESS_KEY, JSON.stringify(updated));
           }
         }).catch(() => {});
       }
       return [...prev, withId];
     });
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, ADDRESS_KEY]);
 
   const editAddress = useCallback((id: number, updatedAddr: Omit<Address, 'id'>) => {
     setAddresses(prev => prev.map(a => (a.id === id ? { ...updatedAddr, id } : a)));

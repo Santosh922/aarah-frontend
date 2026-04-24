@@ -104,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearSession = useCallback(() => {
     const adminRoute = isAdminPath(window.location.pathname);
+    const scopedUserId = currentUser?.customerId ? String(currentUser.customerId) : null;
     setToken(null);
     setCurrentUser(null);
 
@@ -114,6 +115,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(USER_TOKEN_STORAGE_KEY);
       localStorage.removeItem(USER_USER_STORAGE_KEY);
       localStorage.removeItem('aarah_customer_profile');
+      if (scopedUserId) {
+        localStorage.removeItem(`aarah_cart_${scopedUserId}`);
+        localStorage.removeItem(`aarah_addresses_${scopedUserId}`);
+      } else {
+        localStorage.removeItem('aarah_cart_guest');
+        localStorage.removeItem('aarah_addresses_guest');
+      }
+      // Legacy cleanup (pre-user-scoped storage).
+      localStorage.removeItem('aarah_cart');
+      localStorage.removeItem('aarah_addresses');
     }
 
     // Backward compatibility cleanup for matching legacy session only.
@@ -125,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     localStorage.removeItem('aarah_customer_profile');
-  }, []);
+  }, [currentUser]);
 
   const login = useCallback((profile: UserProfile) => {
     // Compatibility for existing components until they migrate to setSession.
